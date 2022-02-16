@@ -11,6 +11,7 @@ const _pollRate = 20 * time.Millisecond
 
 var _initialized bool = false
 var _numFloors int = 4
+var _numButtonTypes = 3
 var _mtx sync.Mutex
 var _conn net.Conn
 
