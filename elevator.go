@@ -7,9 +7,9 @@ import (
 type ElevatorBehaviour int64
 
 const (
-	Idle ElevatorBehaviour = 0
-	Up   ElevatorBehaviour = 1
-	Down ElevatorBehaviour = -1
+	EB_Idle ElevatorBehaviour = 0
+	EB_Moving  ElevatorBehaviour = 1
+	EB_DoorOpen ElevatorBehaviour = -1
 )
 
 type Elevator struct {
