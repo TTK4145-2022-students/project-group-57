@@ -1,10 +1,9 @@
+package fsm
 
 import (
 	"Driver-go/elevio"
-	"elevator.go"
+	"elevator"
 )
-
-elevator elevator.Elevator
 
 
 func setAllLights(Elevator es){

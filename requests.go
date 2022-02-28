@@ -7,7 +7,7 @@ import (
 
 type Action struct {
 	dirn      elevio.MotorDirection
-	behaviour ElevatorBehaviour
+	behaviour elevator.ElevatorBehaviour
 }
 
 func RequestsAbove(e elevator.Elevator) int {
@@ -21,7 +21,7 @@ func RequestsAbove(e elevator.Elevator) int {
 	return 0
 }
 
-func RequestsBelow(e Elevator) int {
+func RequestsBelow(e elevator.Elevator) int {
 	for i := 0; i < e.floor; i++ {
 		for btn := 0; btn < _numButtonTypes; btn++ {
 			if e.requests[i][btn] {
@@ -32,7 +32,7 @@ func RequestsBelow(e Elevator) int {
 	return 0
 }
 
-func RequestsHere(e Elevator) int {
+func RequestsHere(e elevator.Elevator) int {
 	for btn := 0; btn < _numButtonTypes; btn++ {
 		if e.requests[e.floor][btn] {
 			return 1
@@ -41,76 +41,74 @@ func RequestsHere(e Elevator) int {
 	return 0
 }
 
-func RequestsNextAction(e Elevator) Action {
+func RequestsNextAction(e elevator.Elevator) Action {
 	switch e.dirn {
-	case MD_Up:
+	case elevio.MD_Up:
 		if RequestsAbove(e) {
-			return Action{MD_Up, EB_Moving}
+			return Action{elevio.MD_Up, elevator.EB_Moving}
 		} else if RequestsHere(e) {
-			return Action{MD_Down, EB_DoorOpen}
+			return Action{elevio.MD_Down, elevator.EB_DoorOpen}
 		} else if RequestsBelow(e) {
-			return Action{MD_Down, EB_Moving}
+			return Action{elevio.MD_Down, elevator.EB_Moving}
 		} else {
-			return Action{MD_Stop, EB_Idle}
+			return Action{elevio.MD_Stop, elevator.EB_Idle}
 		}
-	case MD_Down:
+	case elevio.MD_Down:
 		if RequestsBelow(e) {
-			return Action{MD_Down, EB_Moving}
+			return Action{elevio.MD_Down, elevator.EB_Moving}
 		} else if RequestsHere(e) {
-			return Action{MD_Up, EB_DoorOpen}
+			return Action{elevio.MD_Up, elevator.EB_DoorOpen}
 		} else if RequestsAbove(e) {
-			return Action{MD_Up, EB_Moving}
+			return Action{elevio.MD_Up, elevator.EB_Moving}
 		} else {
-			return Action{MD_Stop, EB_Idle}
+			return Action{elevio.MD_Stop, elevator.EB_Idle}
 		}
-	case MD_Stop:
+	case elevio.MD_Stop:
 		if RequestsHere(e) {
-			return Action{MD_Stop, EB_DoorOpen}
+			return Action{elevio.MD_Stop, elevator.EB_DoorOpen}
 		} else if RequestsAbove(e) {
-			return Action{MD_Up, EB_Moving}
+			return Action{elevio.MD_Up, elevator.EB_Moving}
 		} else if RequestsBelow(e) {
-			return Action{MD_Down, EB_Moving}
+			return Action{elevio.MD_Down, elevator.EB_Moving}
 		} else {
-			return Action{MD_Stop, EB_Idle}
+			return Action{elevio.MD_Stop, elevator.EB_Idle}
 		}
 	default:
-		return Action{MD_Stop, EB_Idle}
+		return Action{elevio.MD_Stop, elevator.EB_Idle}
 	}
 }
 
-func RequestShouldStop(e Elevator) int {
+func RequestShouldStop(e elevator.Elevator) int {
 	switch e.dirn {
-	case MD_Down:
-		return e.requests[e.floor][BT_HallDown] || e.requests[e.floor][BT_Cab] || !RequestsBelow(e)
-	case MD_Up:
-		return e.requests[e.floor][BT_HallUp] || e.requests[e.floor][BT_Cab] || !Requestsabove(e)
-	case MD_Stop:
+	case elevio.MD_Down:
+		return e.requests[e.floor][elevio.BT_HallDown] || e.requests[e.floor][elevio.BT_Cab] || !RequestsBelow(e)
+	case elevio.MD_Up:
+		return e.requests[e.floor][elevio.BT_HallUp] || e.requests[e.floor][elevio.BT_Cab] || !Requestsabove(e)
+	case elevio.MD_Stop:
 		return 1
 	default:
 		return 1
 	}
 }
 
-func ClearRequestImmediately(e Elevator, btnFloor int, btnType ButtonType) int {
+func ClearRequestImmediately(e elevator.Elevator, btnFloor int, btnType elevio.ButtonType) int {
 	if e.floor == btnFloor {
-		if e.dirn == MD_Up && btnType == BT_HallUp {
+		if e.dirn == elevio.MD_Up && btnType == elevio.BT_HallUp {
 			return 1
-		} else if e.dirn == MD_Down && btnType == BT_HallDown {
+		} else if e.dirn == elevio.MD_Down && btnType == elevio.BT_HallDown {
 			return 1
-		} else if e.dirn == MD_Stop {
+		} else if e.dirn == elevio.MD_Stop {
 			return 1
-		} else if btnType == BT_Cab {
+		} else if btnType == elevio.BT_Cab {
 			return 1
 		}
-	} else {
-		return 0
-	}
+	return 0
 }
 
 //Clears all requests in the floor when the elevator stops
 //This might have to be changed, assumes that everyone enters the elevator in the floor, regardless of direction
-func ClearRequestCurrentFloor(e Elevator) {
-	e.requests[e.floor][BT_Cab] = 0
-	e.requests[e.floor][BT_HallUp] = 0
-	e.requests[e.floor][BT_HallDown] = 0
+func ClearRequestCurrentFloor(e elevator.Elevator) {
+	e.requests[e.floor][elevio.BT_Cab] = 0
+	e.requests[e.floor][elevio.BT_HallUp] = 0
+	e.requests[e.floor][elevio.BT_HallDown] = 0
 }

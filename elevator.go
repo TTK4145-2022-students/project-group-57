@@ -21,9 +21,10 @@ type Elevator struct {
 
 func ElevatorUninitialized() Elevator {
 	uninitElevator := Elevator{
-		floor: -1,
-		dirn: elevio.MotorDirection: MD_Stop,
-		requests: [],
-		behaviour: Idle,
+		floor -1,
+		dirn: elevio.MD_Stop,
+		requests: [nil][nil],
+		behaviour: EB_Idle,
 	}
+	return uninitElevator
 }
