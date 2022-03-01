@@ -1,3 +1,3 @@
-module elevator
+module master
 
-go 1.12
+go 1.13

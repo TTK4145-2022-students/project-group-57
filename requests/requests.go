@@ -1,19 +1,19 @@
 package requests
 
 import (
-	"Driver-go/elevio"
-	"elevator"
+	"master/Driver-go/elevio"
+	"master/elevator"
 )
 
 type Action struct {
-	dirn      elevio.MotorDirection
-	behaviour elevator.ElevatorBehaviour
+	Dirn      elevio.MotorDirection
+	Behaviour elevator.ElevatorBehaviour
 }
 
 func RequestsAbove(e elevator.Elevator) int {
-	for i := e.floor + 1; i < elevio._numFloors; i++ {
-		for btn := 0; btn < _elevio._numButtonTypes; btn++ {
-			if e.requests[i][btn] {
+	for i := e.Floor + 1; i < elevio.NumFloors; i++ {
+		for btn := 0; btn < elevio.NumButtonTypes; btn++ {
+			if e.Requests[i][btn] {
 				return 1
 			}
 		}
@@ -22,9 +22,9 @@ func RequestsAbove(e elevator.Elevator) int {
 }
 
 func RequestsBelow(e elevator.Elevator) int {
-	for i := 0; i < e.floor; i++ {
-		for btn := 0; btn < _numButtonTypes; btn++ {
-			if e.requests[i][btn] {
+	for i := 0; i < e.Floor; i++ {
+		for btn := 0; btn < elevio.NumButtonTypes; btn++ {
+			if e.Requests[i][btn] {
 				return 1
 			}
 		}
@@ -33,8 +33,8 @@ func RequestsBelow(e elevator.Elevator) int {
 }
 
 func RequestsHere(e elevator.Elevator) int {
-	for btn := 0; btn < _numButtonTypes; btn++ {
-		if e.requests[e.floor][btn] {
+	for btn := 0; btn < elevio.NumButtonTypes; btn++ {
+		if e.Requests[e.Floor][btn] {
 			return 1
 		}
 	}
@@ -42,33 +42,33 @@ func RequestsHere(e elevator.Elevator) int {
 }
 
 func RequestsNextAction(e elevator.Elevator) Action {
-	switch e.dirn {
+	switch e.Dirn {
 	case elevio.MD_Up:
-		if RequestsAbove(e) {
+		if RequestsAbove(e) == 1 {
 			return Action{elevio.MD_Up, elevator.EB_Moving}
-		} else if RequestsHere(e) {
+		} else if RequestsHere(e) == 1 {
 			return Action{elevio.MD_Down, elevator.EB_DoorOpen}
-		} else if RequestsBelow(e) {
+		} else if RequestsBelow(e) == 1 {
 			return Action{elevio.MD_Down, elevator.EB_Moving}
 		} else {
 			return Action{elevio.MD_Stop, elevator.EB_Idle}
 		}
 	case elevio.MD_Down:
-		if RequestsBelow(e) {
+		if RequestsBelow(e) == 1 {
 			return Action{elevio.MD_Down, elevator.EB_Moving}
-		} else if RequestsHere(e) {
+		} else if RequestsHere(e) == 1 {
 			return Action{elevio.MD_Up, elevator.EB_DoorOpen}
-		} else if RequestsAbove(e) {
+		} else if RequestsAbove(e) == 1 {
 			return Action{elevio.MD_Up, elevator.EB_Moving}
 		} else {
 			return Action{elevio.MD_Stop, elevator.EB_Idle}
 		}
 	case elevio.MD_Stop:
-		if RequestsHere(e) {
+		if RequestsHere(e) == 1 {
 			return Action{elevio.MD_Stop, elevator.EB_DoorOpen}
-		} else if RequestsAbove(e) {
+		} else if RequestsAbove(e) == 1 {
 			return Action{elevio.MD_Up, elevator.EB_Moving}
-		} else if RequestsBelow(e) {
+		} else if RequestsBelow(e) == 1 {
 			return Action{elevio.MD_Down, elevator.EB_Moving}
 		} else {
 			return Action{elevio.MD_Stop, elevator.EB_Idle}
@@ -79,11 +79,11 @@ func RequestsNextAction(e elevator.Elevator) Action {
 }
 
 func RequestShouldStop(e elevator.Elevator) int {
-	switch e.dirn {
+	switch e.Dirn {
 	case elevio.MD_Down:
-		return e.requests[e.floor][elevio.BT_HallDown] || e.requests[e.floor][elevio.BT_Cab] || !RequestsBelow(e)
+		return e.Requests[e.Floor][elevio.BT_HallDown] || e.Requests[e.Floor][elevio.BT_Cab] || !RequestsBelow(e)
 	case elevio.MD_Up:
-		return e.requests[e.floor][elevio.BT_HallUp] || e.requests[e.floor][elevio.BT_Cab] || !Requestsabove(e)
+		return e.Requests[e.Floor][elevio.BT_HallUp] || e.Requests[e.Floor][elevio.BT_Cab] || !RequestsAbove(e)
 	case elevio.MD_Stop:
 		return 1
 	default:
@@ -92,23 +92,25 @@ func RequestShouldStop(e elevator.Elevator) int {
 }
 
 func ClearRequestImmediately(e elevator.Elevator, btnFloor int, btnType elevio.ButtonType) int {
-	if e.floor == btnFloor {
-		if e.dirn == elevio.MD_Up && btnType == elevio.BT_HallUp {
+	if e.Floor == btnFloor {
+		if e.Dirn == elevio.MD_Up && btnType == elevio.BT_HallUp {
 			return 1
-		} else if e.dirn == elevio.MD_Down && btnType == elevio.BT_HallDown {
+		} else if e.Dirn == elevio.MD_Down && btnType == elevio.BT_HallDown {
 			return 1
-		} else if e.dirn == elevio.MD_Stop {
+		} else if e.Dirn == elevio.MD_Stop {
 			return 1
 		} else if btnType == elevio.BT_Cab {
 			return 1
 		}
+		return 0
+	}
 	return 0
 }
 
 //Clears all requests in the floor when the elevator stops
 //This might have to be changed, assumes that everyone enters the elevator in the floor, regardless of direction
 func ClearRequestCurrentFloor(e elevator.Elevator) {
-	e.requests[e.floor][elevio.BT_Cab] = 0
-	e.requests[e.floor][elevio.BT_HallUp] = 0
-	e.requests[e.floor][elevio.BT_HallDown] = 0
+	e.Requests[e.Floor][elevio.BT_Cab] = 0
+	e.Requests[e.Floor][elevio.BT_HallUp] = 0
+	e.Requests[e.Floor][elevio.BT_HallDown] = 0
 }

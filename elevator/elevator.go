@@ -1,7 +1,7 @@
 package elevator
 
 import (
-	"Driver-go/elevio"
+	"master/Driver-go/elevio"
 )
 
 type ElevatorBehaviour int64
@@ -13,18 +13,18 @@ const (
 )
 
 type Elevator struct {
-	floor     int
-	dirn      elevio.MotorDirection
-	requests  [elevio._numFloors][elevio.ButtonType]int
-	behaviour ElevatorBehaviour
+	Floor     int
+	Dirn      elevio.MotorDirection
+	Requests  [elevio._numFloors][elevio.ButtonType]int
+	Behaviour ElevatorBehaviour
 }
 
 func ElevatorUninitialized() Elevator {
 	uninitElevator := Elevator{
-		floor -1,
-		dirn: elevio.MD_Stop,
-		requests: [nil][nil],
-		behaviour: EB_Idle,
+		Floor: -1,
+		Dirn: elevio.MD_Stop,
+		Requests: [nil][nil],
+		Behaviour: EB_Idle,
 	}
 	return uninitElevator
 }
