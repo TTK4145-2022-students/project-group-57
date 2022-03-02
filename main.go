@@ -5,13 +5,13 @@ import (
 	"master/Driver-go/elevio"
 	"master/elevator"
 	"master/fsm"
+	"time"
 )
 
 func main() {
 
 	numFloors := 4
-
-	elevio.Init("localhost:18352", numFloors)
+	elevio.Init("localhost:15657", numFloors)
 
 	e := elevator.Elevator{
 		Floor:     elevio.GetFloor(),
@@ -24,6 +24,7 @@ func main() {
 		e = fsm.Fsm_onInitBetweenFloors(e)
 	}
 
+	fsm.SetAllLights(e)
 	//var d elevio.MotorDirection = elevio.MD_Up
 	//elevio.SetMotorDirection(d)
 
@@ -31,6 +32,8 @@ func main() {
 	drv_floors := make(chan int)
 	drv_obstr := make(chan bool)
 	drv_stop := make(chan bool)
+
+	doorTimer := time.NewTimer(20 * time.Second)
 
 	go elevio.PollButtons(drv_buttons)
 	go elevio.PollFloorSensor(drv_floors)
@@ -40,18 +43,20 @@ func main() {
 	for {
 		select {
 		case a := <-drv_buttons:
+			fmt.Println("buttonevent")
 			fmt.Printf("%+v\n", a)
 			elevio.SetButtonLamp(a.Button, a.Floor, true)
-			fsm.Fsm_onRequestButtonPressed(e, a.Floor, a.Button)
+			e = fsm.Fsm_onRequestButtonPressed(e, a.Floor, a.Button, doorTimer)
 
 		case a := <-drv_floors:
+			fmt.Println("floor")
 			fmt.Printf("%+v\n", a)
 			if a == numFloors-1 {
 				e.Dirn = elevio.MD_Stop
 			} else if a == 0 {
 				e.Dirn = elevio.MD_Stop
 			}
-			elevio.SetMotorDirection(e.Dirn)
+			e = fsm.Fsm_onFloorArrival(e, a, doorTimer)
 
 		case a := <-drv_obstr:
 			fmt.Printf("%+v\n", a)
@@ -68,6 +73,10 @@ func main() {
 					elevio.SetButtonLamp(b, f, false)
 				}
 			}
+		case <-doorTimer.C:
+			fmt.Println("Timed out")
+			fmt.Println(e.Behaviour)
+			e = fsm.Fsm_onDoorTimeout(e)
 		}
 	}
 }

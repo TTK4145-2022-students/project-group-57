@@ -111,7 +111,10 @@ func ClearRequestImmediately(e elevator.Elevator, btnFloor int, btnType elevio.B
 //This might have to be changed, assumes that everyone enters the elevator in the floor, regardless of direction
 func ClearRequestCurrentFloor(e elevator.Elevator) elevator.Elevator {
 	e.Requests[e.Floor][elevio.BT_Cab] = false
+	elevio.SetButtonLamp(elevio.BT_Cab, e.Floor, false)
 	e.Requests[e.Floor][elevio.BT_HallUp] = false
+	elevio.SetButtonLamp(elevio.BT_HallUp, e.Floor, false)
 	e.Requests[e.Floor][elevio.BT_HallDown] = false
+	elevio.SetButtonLamp(elevio.BT_HallDown, e.Floor, false)
 	return e
 }
