@@ -3,6 +3,8 @@ package main
 import (
 	"fmt"
 	"master/Driver-go/elevio"
+	"master/elevator"
+	"master/fsm"
 )
 
 func main() {
@@ -11,7 +13,18 @@ func main() {
 
 	elevio.Init("localhost:18352", numFloors)
 
-	var d elevio.MotorDirection = elevio.MD_Up
+	e := elevator.Elevator{
+		Floor:     elevio.GetFloor(),
+		Dirn:      elevio.MD_Stop,
+		Requests:  [elevio.NumFloors][elevio.NumButtonTypes]bool{},
+		Behaviour: elevator.EB_Idle,
+	}
+
+	if e.Floor == -1 {
+		e = fsm.Fsm_onInitBetweenFloors(e)
+	}
+
+	//var d elevio.MotorDirection = elevio.MD_Up
 	//elevio.SetMotorDirection(d)
 
 	drv_buttons := make(chan elevio.ButtonEvent)
@@ -29,22 +42,23 @@ func main() {
 		case a := <-drv_buttons:
 			fmt.Printf("%+v\n", a)
 			elevio.SetButtonLamp(a.Button, a.Floor, true)
+			fsm.Fsm_onRequestButtonPressed(e, a.Floor, a.Button)
 
 		case a := <-drv_floors:
 			fmt.Printf("%+v\n", a)
 			if a == numFloors-1 {
-				d = elevio.MD_Down
+				e.Dirn = elevio.MD_Stop
 			} else if a == 0 {
-				d = elevio.MD_Up
+				e.Dirn = elevio.MD_Stop
 			}
-			elevio.SetMotorDirection(d)
+			elevio.SetMotorDirection(e.Dirn)
 
 		case a := <-drv_obstr:
 			fmt.Printf("%+v\n", a)
 			if a {
 				elevio.SetMotorDirection(elevio.MD_Stop)
 			} else {
-				elevio.SetMotorDirection(d)
+				elevio.SetMotorDirection(e.Dirn)
 			}
 
 		case a := <-drv_stop:
