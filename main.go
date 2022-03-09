@@ -34,6 +34,7 @@ func main() {
 	drv_stop := make(chan bool)
 
 	doorTimer := time.NewTimer(20 * time.Second)
+	obstructionActive := false
 
 	go elevio.PollButtons(drv_buttons)
 	go elevio.PollFloorSensor(drv_floors)
@@ -58,12 +59,16 @@ func main() {
 			}
 			e = fsm.Fsm_onFloorArrival(e, a, doorTimer)
 
-		case a := <-drv_obstr:
+		case a := <-drv_obstr: //Ask: Obstruction between floors, three seconds with open door after obstruction off.?
 			fmt.Printf("%+v\n", a)
 			if a {
-				elevio.SetMotorDirection(elevio.MD_Stop)
+				obstructionActive = true
 			} else {
-				elevio.SetMotorDirection(e.Dirn)
+				obstructionActive = false
+				if e.Behaviour == elevator.EB_DoorOpen {
+					doorTimer.Stop()
+					doorTimer.Reset(3 * time.Second)
+				}
 			}
 
 		case a := <-drv_stop:
@@ -74,9 +79,11 @@ func main() {
 				}
 			}
 		case <-doorTimer.C:
-			fmt.Println("Timed out")
-			fmt.Println(e.Behaviour)
-			e = fsm.Fsm_onDoorTimeout(e)
+			if !obstructionActive {
+				fmt.Println("Timed out")
+				fmt.Println(e.Behaviour)
+				e = fsm.Fsm_onDoorTimeout(e)
+			}
 		}
 	}
 }
