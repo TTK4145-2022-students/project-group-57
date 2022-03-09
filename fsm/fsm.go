@@ -8,6 +8,8 @@ import (
 	"time"
 )
 
+//Maybe change switch-case to something else?
+
 func SetAllLights(es elevator.Elevator) {
 	for floor := 0; floor < elevio.NumFloors; floor++ {
 		for btn := 0; btn < elevio.NumButtonTypes; btn++ {
