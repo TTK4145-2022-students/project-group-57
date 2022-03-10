@@ -14,17 +14,12 @@ import (
 type SlaveButtonEventMsg struct {
 	Btn_floor int
 	Btn_type  int
-	//Iter    int
 }
-
-/*type SlaveFloorEventMsg struct {
-	floor int
-}*/
 
 func main() {
 
 	numFloors := 4
-	elevio.Init("localhost:15657", numFloors)
+	elevio.Init("localhost:15659", numFloors)
 
 	e := elevator.Elevator{
 		Floor:     elevio.GetFloor(),
@@ -46,8 +41,8 @@ func main() {
 	drv_obstr := make(chan bool)
 	drv_stop := make(chan bool)
 	slaveButtonTx := make(chan SlaveButtonEventMsg)
-	//slaveFloorTx := make(chan SlaveFloorEventMsg)
-	//helloRx := make(chan HelloMsg)
+	slaveFloorTx := make(chan int)
+	MasterMotorDirRx := make(chan int)
 
 	doorTimer := time.NewTimer(20 * time.Second)
 	obstructionActive := false
@@ -57,19 +52,29 @@ func main() {
 	go elevio.PollObstructionSwitch(drv_obstr)
 	go elevio.PollStopButton(drv_stop)
 	go broadcast.Transmitter(16513, slaveButtonTx)
-	//go broadcast.Transmitter(16513, slaveFloorTx)
-	//go broadcast.Receiver(16514, helloRx)
+	go broadcast.Transmitter(16514, slaveFloorTx)
+	go broadcast.Receiver(16515, MasterMotorDirRx)
+
+	//Testing
+	elevio.SetMotorDirection(elevio.MD_Up)
+	//Testing
 
 	for {
 		select {
 		case a := <-drv_buttons:
 			buttonEvent := SlaveButtonEventMsg{a.Floor, int(a.Button)} //Maybe a go routine
-			fmt.Println(buttonEvent.Btn_floor)
 			slaveButtonTx <- buttonEvent
-
+			fmt.Println("Floor")
+			fmt.Println(buttonEvent.Btn_floor)
+			fmt.Println("Button type")
+			fmt.Println(buttonEvent.Btn_type)
+			fmt.Println(" ")
 		case a := <-drv_floors:
-			//floorEvent := SlaveFloorEventMsg{a} //Maybe a go routine
-			//slaveFloorTx <- floorEvent
+			floorEvent := a //Maybe a go routine
+			slaveFloorTx <- floorEvent
+			fmt.Println("Arrived at floor:")
+			fmt.Println(floorEvent)
+			fmt.Println("")
 
 			if a == numFloors-1 {
 				e.Dirn = elevio.MD_Stop
@@ -101,6 +106,11 @@ func main() {
 				fmt.Println("Timed out")
 				fmt.Println(e.Behaviour)
 				e = fsm.Fsm_onDoorTimeout(e)
+			}
+		case a := <-MasterMotorDirRx:
+			if a == 0 {
+				elevio.SetMotorDirection(elevio.MD_Stop)
+				fmt.Println("Elevator told to stop")
 			}
 		}
 	}

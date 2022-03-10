@@ -26,36 +26,58 @@ package main
 
 import (
 	"fmt"
+	"master/Driver-go/elevio"
+	"master/elevator"
 	"master/network/broadcast"
+	"master/requests"
 )
 
 type SlaveButtonEventMsg struct {
 	Btn_floor int
 	Btn_type  int
-	//Iter    int
-}
-
-type HelloMsg struct {
-	Message string
-	Iter    int
 }
 
 func main() {
-	SlaveRx := make(chan SlaveButtonEventMsg)
-	helloTx := make(chan HelloMsg)
+	SlaveButtonRx := make(chan SlaveButtonEventMsg)
+	SlaveFloorRx := make(chan int)
+	MasterCommandMD := make(chan int)
 
-	go broadcast.Receiver(16513, SlaveRx)
-	go broadcast.Transmitter(16514, helloTx)
+	go broadcast.Receiver(16513, SlaveButtonRx)
+	go broadcast.Receiver(16514, SlaveFloorRx)
+	go broadcast.Transmitter(16515, MasterCommandMD)
+
+	e1 := elevator.Elevator{
+		Floor:     -1,
+		Dirn:      -1,
+		Requests:  [elevio.NumFloors][elevio.NumButtonTypes]bool{},
+		Behaviour: -1,
+	}
+
+	//Testing
+	e1.Requests[3][2] = true
+	//Testing
 
 	for {
+		select {
+		case slaveMsg := <-SlaveButtonRx:
+			fmt.Println("Floor")
+			fmt.Println(slaveMsg.Btn_floor)
+			fmt.Println("Button type")
+			fmt.Println(slaveMsg.Btn_type)
+			fmt.Println(" ")
+			e1.Requests[slaveMsg.Btn_floor][slaveMsg.Btn_type] = true
 
-		slaveMsg := <-SlaveRx
-
-		goodbyeMsg := HelloMsg{"I am master", 0}
-		helloTx <- goodbyeMsg
-
-		fmt.Println(slaveMsg.Btn_floor)
-		fmt.Println(slaveMsg.Btn_type)
+		case slaveMsg := <-SlaveFloorRx:
+			fmt.Println("Arrived at floor:")
+			fmt.Println(int(slaveMsg))
+			fmt.Println(" ")
+			e1.Floor = slaveMsg
+			if requests.RequestsHere(e1) {
+				MasterMotorDirTx := elevio.MD_Stop
+				MasterCommandMD <- MasterMotorDirTx
+				fmt.Println("Elevator should stop!")
+			}
+		}
 
 	}
 
