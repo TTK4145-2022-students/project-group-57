@@ -28,4 +28,3 @@ func ElevatorUninitialized() Elevator {
 	}
 	return uninitElevator
 }
- 
