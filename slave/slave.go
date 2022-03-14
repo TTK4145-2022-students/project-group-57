@@ -139,7 +139,7 @@ func main() {
 			e1.Dirn = (elevio.MotorDirection(a))
 			if a == 0 {
 				elevio.SetMotorDirection(e1.Dirn)
-				fmt.Println("Elevator told to stop")
+				fmt.Println("Elevator told to stop") //Receives a lot of these
 				e1.Behaviour = elevator.EB_DoorOpen
 				elevio.SetDoorOpenLamp(true)
 				doorTimer.Stop()

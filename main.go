@@ -26,7 +26,6 @@ package main
 
 import (
 	"fmt"
-	"master/Driver-go/elevio"
 	"master/elevator"
 	"master/network/broadcast"
 	"master/requests"
@@ -107,9 +106,12 @@ func main() {
 		}*/
 
 		select {
-		case localState := <-slaveState:
-			e1 = localState
+		/*case localState := <-slaveState:
+		e1 = localState
+		*/
+
 		case slaveMsg := <-slaveButtonRx: //New order from slave
+			//Initial order starting here (first)
 			fmt.Println("Floor")
 			fmt.Println(slaveMsg.Btn_floor)
 			fmt.Println("Button type")
@@ -122,22 +124,61 @@ func main() {
 
 			masterAckOrder <- MasterAckOrderMsg{int(slaveMsg.Btn_floor), slaveMsg.Btn_type}
 
-			if requests.MasterRequestsHere(e1, MasterRequests) {
+			/*if requests.MasterRequestsHere(e1, MasterRequests) {
 				masterCommandMD <- elevio.MD_Stop
 				fmt.Println("Elevator should stop!")
 			} else if requests.MasterRequestsAbove(e1, MasterRequests) {
 				masterCommandMD <- int(elevio.MD_Up)
 			} else if requests.MasterRequestsBelow(e1, MasterRequests) {
 				masterCommandMD <- int(elevio.MD_Down)
-			}
+			}*/
+			//Delete later/soon
+
 		case slaveMsg := <-slaveFloorRx: //New floor from slave
+			//Next action given here, but only in same direction of elevator(?)
 			fmt.Println("Arrived at floor:")
 			fmt.Println(int(slaveMsg))
 			fmt.Println(" ")
 			e1.Floor = slaveMsg
 
-			if requests.MasterRequestShouldStop(e1, MasterRequests) {
+			/*if requests.MasterRequestShouldStop(e1, MasterRequests) {
 				masterCommandMD <- int(elevio.MD_Stop)
+			} //Returns true most of the time?
+			*/
+
+			//change these
+			/*if requests.MasterRequestsHere(e1, MasterRequests) {
+				masterCommandMD <- elevio.MD_Stop
+				fmt.Println("Elevator should stop!")
+			} else if requests.MasterRequestsAbove(e1, MasterRequests) {
+				masterCommandMD <- int(elevio.MD_Up)
+			} else if requests.MasterRequestsBelow(e1, MasterRequests) {
+				masterCommandMD <- int(elevio.MD_Down)
+			}*/
+
+			a := requests.MasterRequestsNextAction(e1, MasterRequests)
+			e1.Behaviour = a.Behaviour
+			e1.Dirn = a.Dirn
+			masterCommandMD <- int(a.Dirn)
+
+		case slaveMsg := <-slaveAckOrderDoneRx: //Recieve ack from slave, order done
+			//Try to read new orders from queue or in opposite direction from elevator here
+
+			fmt.Println("Received ack from slave")
+			fmt.Println("Current state: ")
+			fmt.Println(e1.Behaviour)
+
+			if slaveMsg {
+				MasterRequests.Requests[e1.Floor][0] = false
+				MasterRequests.Requests[e1.Floor][1] = false
+				MasterRequests.Requests[e1.Floor][2] = false
+				fmt.Println(MasterRequests)
+
+				e1.Requests[e1.Floor][0] = false
+				e1.Requests[e1.Floor][1] = false
+				e1.Requests[e1.Floor][2] = false
+
+				masterTurnOffOrderLightTx <- e1.Floor
 			}
 
 			a := requests.MasterRequestsNextAction(e1, MasterRequests)
@@ -154,29 +195,6 @@ func main() {
 				masterCommandMD <- int(e1.Dirn)
 			case elevator.EB_Idle:
 				masterCommandMD <- int(e1.Dirn)
-			}
-
-			if requests.RequestsHere(e1) {
-				masterCommandMD <- elevio.MD_Stop
-				fmt.Println("Elevator should stop!")
-			} else if requests.RequestsAbove(e1) {
-				masterCommandMD <- int(elevio.MD_Up)
-			} else if requests.RequestsBelow(e1) {
-				masterCommandMD <- int(elevio.MD_Down)
-			}
-
-		case slaveMsg := <-slaveAckOrderDoneRx: //Recieve ack from slave, order done
-			if slaveMsg {
-				MasterRequests.Requests[e1.Floor][0] = false
-				MasterRequests.Requests[e1.Floor][1] = false
-				MasterRequests.Requests[e1.Floor][2] = false
-				fmt.Println(MasterRequests)
-
-				e1.Requests[e1.Floor][0] = false
-				e1.Requests[e1.Floor][1] = false
-				e1.Requests[e1.Floor][2] = false
-
-				masterTurnOffOrderLightTx <- e1.Floor
 			}
 
 		}
