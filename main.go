@@ -1,14 +1,5 @@
 package main
 
-//TODO
-//Dumb down slave
-//Maybe remove states and use channels????
-
-//Make master decide and set direction for slave (testing)
-//Send requests from slave to master
-//Save requests in a reasonable format in master - with states?
-//Update slave-state and save in a reasonable format in master
-
 //Slave executes its own cab requests
 
 //Fix logic in request-execution in master
@@ -26,9 +17,11 @@ package main
 
 import (
 	"fmt"
+	"master/Driver-go/elevio"
 	"master/elevator"
 	"master/network/broadcast"
 	"master/requests"
+	"time"
 )
 
 type SlaveButtonEventMsg struct {
@@ -41,27 +34,15 @@ type MasterAckOrderMsg struct {
 	Btn_type  int
 }
 
+type Masterstruct struct {
+	Hallrequests [elevio.NumFloors][2]bool
+	states       elevator.Elevator
+}
+
 var e1 elevator.Elevator
 var MasterRequests requests.AllRequests
 
 func main() {
-
-	/*//Maybe init func?
-	e1 := elevator.Elevator{
-		Floor:     elevio.GetFloor(),
-		Dirn:      elevio.MD_Stop,
-		Requests:  [elevio.NumFloors][elevio.NumButtonTypes]bool{},
-		Behaviour: elevator.EB_Idle,
-	}
-
-	if e1.Floor == -1 {
-		e1 = fsm.Fsm_onInitBetweenFloors(e1)
-	}
-
-	fsm.SetAllLights(e1)
-	var initFloor int
-	broadcast.Receiver(16519, initFloor)
-	fmt.Println(initFloor)*/
 
 	slaveButtonRx := make(chan SlaveButtonEventMsg)
 	slaveFloorRx := make(chan int)
@@ -70,46 +51,24 @@ func main() {
 	slaveAckOrderDoneRx := make(chan bool)
 	masterTurnOffOrderLightTx := make(chan int)
 	slaveState := make(chan elevator.Elevator)
+	commandDoorOpen := make(chan bool)
+	slaveDoorOpened := make(chan bool)
 
 	go broadcast.Receiver(16513, slaveButtonRx)
 	go broadcast.Receiver(16514, slaveFloorRx)
+	go broadcast.Receiver(16517, slaveAckOrderDoneRx)
+	go broadcast.Receiver(16519, slaveState)
+	go broadcast.Receiver(16521, slaveDoorOpened)
+
 	go broadcast.Transmitter(16515, masterCommandMD)
 	go broadcast.Transmitter(16516, masterAckOrder)
-	go broadcast.Receiver(16517, slaveAckOrderDoneRx)
 	go broadcast.Transmitter(16518, masterTurnOffOrderLightTx)
-	go broadcast.Receiver(16519, slaveState)
+	go broadcast.Transmitter(16520, commandDoorOpen)
 
-	//Testing
-	//e1.Requests[3][2] = true
-	//Testing
+	doorTimer := time.NewTimer(20 * time.Second)
 
 	for {
-		/* fmt.Println("Floor from state: ")
-		fmt.Println(e1.Floor)
-		fmt.Println("Behaviour: ")
-		fmt.Println(e1.Behaviour)*/
-
-		/*if e1.Behaviour == elevator.EB_Idle {
-			a := requests.MasterRequestsNextAction(e1, MasterRequests)
-			e1.Dirn = a.Dirn
-			e1.Behaviour = a.Behaviour
-
-			switch e1.Behaviour {
-			case elevator.EB_DoorOpen:
-				e1 = requests.ClearRequestCurrentFloor(e1)
-				fsm.SetAllLights(e1)
-			case elevator.EB_Moving:
-				masterCommandMD <- int(e1.Dirn)
-			case elevator.EB_Idle:
-				masterCommandMD <- int(e1.Dirn)
-			}
-		}*/
-
 		select {
-		/*case localState := <-slaveState:
-		e1 = localState
-		*/
-
 		case slaveMsg := <-slaveButtonRx: //New order from slave
 			//Initial order starting here (first)
 			fmt.Println("Floor")
@@ -119,84 +78,62 @@ func main() {
 			fmt.Println(" ")
 
 			MasterRequests.Requests[slaveMsg.Btn_floor][slaveMsg.Btn_type] = true //Saving requests in master
-			e1.Requests[slaveMsg.Btn_floor][slaveMsg.Btn_type] = true
 			fmt.Println(MasterRequests)
+
+			if e1.Behaviour == elevator.EB_Idle {
+				nextAction := requests.MasterRequestsNextAction(e1, MasterRequests)
+				e1.Behaviour = nextAction.Behaviour
+				e1.Dirn = nextAction.Dirn
+				masterCommandMD <- int(e1.Dirn)
+			}
 
 			masterAckOrder <- MasterAckOrderMsg{int(slaveMsg.Btn_floor), slaveMsg.Btn_type}
 
-			/*if requests.MasterRequestsHere(e1, MasterRequests) {
-				masterCommandMD <- elevio.MD_Stop
-				fmt.Println("Elevator should stop!")
-			} else if requests.MasterRequestsAbove(e1, MasterRequests) {
-				masterCommandMD <- int(elevio.MD_Up)
-			} else if requests.MasterRequestsBelow(e1, MasterRequests) {
-				masterCommandMD <- int(elevio.MD_Down)
-			}*/
-			//Delete later/soon
-
 		case slaveMsg := <-slaveFloorRx: //New floor from slave
 			//Next action given here, but only in same direction of elevator(?)
-			fmt.Println("Arrived at floor:")
-			fmt.Println(int(slaveMsg))
-			fmt.Println(" ")
 			e1.Floor = slaveMsg
-
-			/*if requests.MasterRequestShouldStop(e1, MasterRequests) {
-				masterCommandMD <- int(elevio.MD_Stop)
-			} //Returns true most of the time?
-			*/
-
-			//change these
-			/*if requests.MasterRequestsHere(e1, MasterRequests) {
-				masterCommandMD <- elevio.MD_Stop
-				fmt.Println("Elevator should stop!")
-			} else if requests.MasterRequestsAbove(e1, MasterRequests) {
-				masterCommandMD <- int(elevio.MD_Up)
-			} else if requests.MasterRequestsBelow(e1, MasterRequests) {
-				masterCommandMD <- int(elevio.MD_Down)
-			}*/
-
+			fmt.Println("Behaviour")
+			fmt.Println(e1.Behaviour)
+			fmt.Println("direction")
+			fmt.Println(e1.Dirn)
 			a := requests.MasterRequestsNextAction(e1, MasterRequests)
 			e1.Behaviour = a.Behaviour
 			e1.Dirn = a.Dirn
-			masterCommandMD <- int(a.Dirn)
+			if e1.Behaviour == elevator.EB_DoorOpen {
+				commandDoorOpen <- true
+			} else {
+				masterCommandMD <- int(a.Dirn)
+			}
 
-		case slaveMsg := <-slaveAckOrderDoneRx: //Recieve ack from slave, order done
-			//Try to read new orders from queue or in opposite direction from elevator here
-
-			fmt.Println("Received ack from slave")
-			fmt.Println("Current state: ")
-			fmt.Println(e1.Behaviour)
-
+		case slaveMsg := <-slaveDoorOpened:
 			if slaveMsg {
+				e1.Behaviour = elevator.EB_DoorOpen
 				MasterRequests.Requests[e1.Floor][0] = false
 				MasterRequests.Requests[e1.Floor][1] = false
 				MasterRequests.Requests[e1.Floor][2] = false
-				fmt.Println(MasterRequests)
-
-				e1.Requests[e1.Floor][0] = false
-				e1.Requests[e1.Floor][1] = false
-				e1.Requests[e1.Floor][2] = false
-
 				masterTurnOffOrderLightTx <- e1.Floor
+				doorTimer.Stop()
+				doorTimer.Reset(3 * time.Second)
+			} else {
+				a := requests.MasterRequestsNextAction(e1, MasterRequests)
+				e1.Dirn = a.Dirn
+				e1.Behaviour = a.Behaviour
+
+				switch e1.Behaviour {
+				case elevator.EB_DoorOpen:
+					e1, MasterRequests = requests.MasterClearRequestCurrentFloor(e1, MasterRequests)
+					//fsm.SetAllLights(e1)
+					//elevio.SetButtonLamp(elevio.BT_HallDown, e.Floor, false)
+					masterTurnOffOrderLightTx <- e1.Floor
+				case elevator.EB_Moving:
+					masterCommandMD <- int(e1.Dirn)
+				case elevator.EB_Idle:
+					masterCommandMD <- int(e1.Dirn)
+				}
 			}
-
-			a := requests.MasterRequestsNextAction(e1, MasterRequests)
-			e1.Dirn = a.Dirn
-			e1.Behaviour = a.Behaviour
-
-			switch e1.Behaviour {
-			case elevator.EB_DoorOpen:
-				e1, MasterRequests = requests.MasterClearRequestCurrentFloor(e1, MasterRequests)
-				//fsm.SetAllLights(e1)
-				//elevio.SetButtonLamp(elevio.BT_HallDown, e.Floor, false)
-				masterTurnOffOrderLightTx <- e1.Floor
-			case elevator.EB_Moving:
-				masterCommandMD <- int(e1.Dirn)
-			case elevator.EB_Idle:
-				masterCommandMD <- int(e1.Dirn)
-			}
-
+		case <-doorTimer.C:
+			commandDoorOpen <- false
+			e1.Behaviour = elevator.EB_Idle
 		}
 	}
 

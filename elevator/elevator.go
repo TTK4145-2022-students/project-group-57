@@ -19,6 +19,11 @@ type Elevator struct {
 	Behaviour ElevatorBehaviour
 }
 
+type StateStruct struct {
+	ID                 string
+	LocalElevatorState Elevator
+}
+
 func ElevatorUninitialized() Elevator {
 	uninitElevator := Elevator{
 		Floor:     -1,

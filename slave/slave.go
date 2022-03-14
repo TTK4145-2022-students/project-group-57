@@ -6,7 +6,6 @@ import (
 	"master/elevator"
 	"master/fsm"
 	"master/network/broadcast"
-	"time"
 )
 
 //These structs will be JSON
@@ -49,33 +48,34 @@ func main() {
 	drv_floors := make(chan int)
 	drv_obstr := make(chan bool)
 	drv_stop := make(chan bool)
-	stateChan := make(chan elevator.Elevator)
 
+	commandDoorOpen := make(chan bool)
+	stateChan := make(chan elevator.Elevator)
 	slaveButtonTx := make(chan SlaveButtonEventMsg)
 	slaveFloorTx := make(chan int)
 	slaveAckOrderDoneTx := make(chan bool)
 	masterMotorDirRx := make(chan int)
 	masterAckOrderRx := make(chan MasterAckOrderMsg) // burde lage en struct med button_type og floor
 	masterTurnOffOrderLightRx := make(chan int)
+	slaveDoorOpened := make(chan bool)
 
-	doorTimer := time.NewTimer(20 * time.Second)
 	//obstructionActive := false
 
 	go elevio.PollButtons(drv_buttons)
 	go elevio.PollFloorSensor(drv_floors)
 	go elevio.PollObstructionSwitch(drv_obstr)
 	go elevio.PollStopButton(drv_stop)
+
 	go broadcast.Transmitter(16513, slaveButtonTx)
 	go broadcast.Transmitter(16514, slaveFloorTx)
+	go broadcast.Transmitter(16517, slaveAckOrderDoneTx)
+	go broadcast.Transmitter(16519, stateChan)
+	go broadcast.Transmitter(16521, slaveDoorOpened)
+
 	go broadcast.Receiver(16515, masterMotorDirRx)
 	go broadcast.Receiver(16516, masterAckOrderRx)
-	go broadcast.Transmitter(16517, slaveAckOrderDoneTx)
 	go broadcast.Receiver(16518, masterTurnOffOrderLightRx)
-	go broadcast.Transmitter(16519, stateChan)
-
-	//Testing
-	//elevio.SetMotorDirection(elevio.MD_Up)
-	//Testing
+	go broadcast.Receiver(16520, commandDoorOpen)
 
 	//doorOpen := false
 	stateChan <- e1
@@ -100,6 +100,9 @@ func main() {
 			fmt.Println("Arrived at floor:")
 			fmt.Println(floorEvent)
 			fmt.Println("")
+
+			elevio.SetFloorIndicator(a)
+			elevio.SetMotorDirection(elevio.MD_Stop)
 
 			if a == numFloors-1 {
 				elevio.SetMotorDirection(elevio.MD_Stop)
@@ -126,31 +129,10 @@ func main() {
 					elevio.SetButtonLamp(b, f, false)
 				}
 			}
-		/*case <-doorTimer.C:
-		if !obstructionActive {
-			fmt.Println("Timed out")
-			//fmt.Println(e.Behaviour)
-			//e = fsm.Fsm_onDoorTimeout(e)
-			elevio.SetDoorOpenLamp(false)
-			doorOpen = false
-		}*/
 
 		case a := <-masterMotorDirRx: //Recieve direction from master
 			e1.Dirn = (elevio.MotorDirection(a))
-			if a == 0 {
-				elevio.SetMotorDirection(e1.Dirn)
-				fmt.Println("Elevator told to stop") //Receives a lot of these
-				e1.Behaviour = elevator.EB_DoorOpen
-				elevio.SetDoorOpenLamp(true)
-				doorTimer.Stop()
-				doorTimer.Reset(3 * time.Second)
-				elevio.SetDoorOpenLamp(false)
-				e1.Behaviour = elevator.EB_Idle
-				slaveAckOrderDoneTx <- true //Send ack for order done
-
-			} else {
-				elevio.SetMotorDirection(e1.Dirn)
-			}
+			elevio.SetMotorDirection(e1.Dirn)
 			stateChan <- e1
 
 		case a := <-masterAckOrderRx:
@@ -160,6 +142,10 @@ func main() {
 			elevio.SetButtonLamp(0, a, false)
 			elevio.SetButtonLamp(1, a, false)
 			elevio.SetButtonLamp(2, a, false)
+
+		case a := <-commandDoorOpen:
+			elevio.SetDoorOpenLamp(a)
+			slaveDoorOpened <- a
 		}
 	}
 }
