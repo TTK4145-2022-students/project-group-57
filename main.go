@@ -18,7 +18,9 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"master/Driver-go/elevio"
 	"master/elevator"
+	"master/fsm"
 	"master/network/broadcast"
 	"master/requests"
 	"os/exec"
@@ -36,18 +38,11 @@ type MasterAckOrderMsg struct {
 	Btn_type  int
 }
 
-/*
-type Masterstruct struct {
-	Hallrequests [elevio.NumFloors][2]bool
-	states       elevator.Elevator
-}
-*/
-
 type HRAElevState struct {
-	Behavior    string `json:"behaviour"`
-	Floor       int    `json:"floor"`
-	Direction   string `json:"direction"`
-	CabRequests []bool `json:"cabRequests"`
+	Behavior    string                 `json:"behaviour"`
+	Floor       int                    `json:"floor"`
+	Direction   string                 `json:"direction"`
+	CabRequests [elevio.NumFloors]bool `json:"cabRequests"`
 }
 
 type HRAInput struct {
@@ -60,6 +55,26 @@ var MasterRequests requests.AllRequests
 
 func main() {
 
+	//At the moment this is just to test hallRequestAssigner
+	e1HRA := HRAElevState{
+		Behavior:    "idle",
+		Floor:       1,                                       //jalla
+		Direction:   elevio.MotorDirToString(elevio.MD_Stop), //This is important
+		CabRequests: [elevio.NumFloors]bool{},
+	}
+
+	//need this as long as the rest of the code isnt rewritten to e1HRA
+	e1 := elevator.Elevator{
+		Floor:     1, //jalla
+		Dirn:      elevio.MD_Stop,
+		Behaviour: elevator.EB_Idle,
+	}
+	if e1.Floor == -1 {
+		e1 = fsm.Fsm_onInitBetweenFloors(e1)
+		e1HRA.Floor = e1.Floor
+	}
+
+	fmt.Println(e1HRA)
 	hraExecutable := ""
 	switch runtime.GOOS {
 	case "linux":
@@ -70,23 +85,15 @@ func main() {
 		panic("OS not supported")
 	}
 
-	input := HRAInput{
+	//Using elevatorstate as input, HallRequests need to be replaced with MasterRequests
+	MasterStruct := HRAInput{
 		HallRequests: [][2]bool{{false, false}, {true, false}, {false, false}, {false, true}},
 		States: map[string]HRAElevState{
-			"one": HRAElevState{
-				Behavior:    "moving",
-				Floor:       2,
-				Direction:   "up",
-				CabRequests: []bool{false, false, false, true},
-			},
-			"two": HRAElevState{
-				Behavior:    "idle",
-				Floor:       0,
-				Direction:   "stop",
-				CabRequests: []bool{false, false, false, false},
-			},
+			"one": e1HRA,
 		},
 	}
+
+	input := MasterStruct
 
 	jsonBytes, err := json.Marshal(input)
 	fmt.Println("json.Marshal error: ", err)
@@ -125,6 +132,11 @@ func main() {
 	go broadcast.Transmitter(16520, commandDoorOpen)
 
 	doorTimer := time.NewTimer(20 * time.Second)
+
+	fmt.Println("Dir before string:")
+	fmt.Println(e1.Dirn)
+	fmt.Println("Dir after string:")
+	fmt.Println(elevio.MotorDirToString(e1.Dirn))
 
 	for {
 		select {

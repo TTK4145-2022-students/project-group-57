@@ -4,31 +4,37 @@ import (
 	"master/Driver-go/elevio"
 )
 
-type ElevatorBehaviour int64
+type ElevatorBehaviour string
 
 const (
-	EB_Idle     ElevatorBehaviour = 0
-	EB_Moving   ElevatorBehaviour = 1
-	EB_DoorOpen ElevatorBehaviour = -1
+	EB_Idle     ElevatorBehaviour = "idle"
+	EB_Moving   ElevatorBehaviour = "moving"
+	EB_DoorOpen ElevatorBehaviour = "doorOpen"
 )
 
 type Elevator struct {
-	Floor     int
-	Dirn      elevio.MotorDirection
-	Requests  [elevio.NumFloors][elevio.NumButtonTypes]bool
-	Behaviour ElevatorBehaviour
+	Behaviour   ElevatorBehaviour
+	Floor       int
+	Dirn        elevio.MotorDirection
+	CabRequests [elevio.NumFloors]bool
+}
+
+type NewElevator struct {
+	Behaviour   ElevatorBehaviour      `json:"behaviour"`
+	Floor       int                    `json:"floor"`
+	Dirn        elevio.MotorDirection  `json:"direction"`
+	CabRequests [elevio.NumFloors]bool `json:"cabRequests"`
 }
 
 type StateStruct struct {
 	ID                 string
-	LocalElevatorState Elevator
+	LocalElevatorState NewElevator
 }
 
 func ElevatorUninitialized() Elevator {
 	uninitElevator := Elevator{
 		Floor:     -1,
 		Dirn:      elevio.MD_Stop,
-		Requests:  [elevio.NumFloors][elevio.NumButtonTypes]bool{},
 		Behaviour: EB_Idle,
 	}
 	return uninitElevator

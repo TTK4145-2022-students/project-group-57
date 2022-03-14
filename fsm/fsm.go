@@ -1,19 +1,17 @@
 package fsm
 
 import (
-	"fmt"
 	"master/Driver-go/elevio"
 	"master/elevator"
-	"master/requests"
-	"time"
 )
 
 //Maybe change switch-case to something else?
 
+//Modified: Resets all lamps, done in order to avoid requests from elevator as input
 func SetAllLights(es elevator.Elevator) {
 	for floor := 0; floor < elevio.NumFloors; floor++ {
 		for btn := 0; btn < elevio.NumButtonTypes; btn++ {
-			elevio.SetButtonLamp(elevio.ButtonType(btn), floor, es.Requests[floor][btn])
+			elevio.SetButtonLamp(elevio.ButtonType(btn), floor, false)
 		}
 	}
 }
@@ -25,7 +23,7 @@ func Fsm_onInitBetweenFloors(e elevator.Elevator) elevator.Elevator {
 	return e
 }
 
-func Fsm_onRequestButtonPressed(e elevator.Elevator, btnFloor int, btn_type elevio.ButtonType, doorTimer *time.Timer) elevator.Elevator {
+/*func Fsm_onRequestButtonPressed(e elevator.Elevator, btnFloor int, btn_type elevio.ButtonType, doorTimer *time.Timer) elevator.Elevator {
 
 	switch e.Behaviour {
 	case elevator.EB_DoorOpen:
@@ -58,9 +56,9 @@ func Fsm_onRequestButtonPressed(e elevator.Elevator, btnFloor int, btn_type elev
 	}
 	SetAllLights(e)
 	return e
-}
+}*/
 
-func Fsm_onFloorArrival(e elevator.Elevator, newFloor int, doorTimer *time.Timer) elevator.Elevator {
+/*func Fsm_onFloorArrival(e elevator.Elevator, newFloor int, doorTimer *time.Timer) elevator.Elevator {
 	e.Floor = newFloor
 	elevio.SetFloorIndicator(newFloor)
 	fmt.Println(e.Behaviour)
@@ -80,9 +78,9 @@ func Fsm_onFloorArrival(e elevator.Elevator, newFloor int, doorTimer *time.Timer
 		}
 	}
 	return e
-}
+}*/
 
-func Fsm_onDoorTimeout(e elevator.Elevator) elevator.Elevator {
+/*func Fsm_onDoorTimeout(e elevator.Elevator) elevator.Elevator {
 	elevio.SetDoorOpenLamp(false)
 	switch e.Behaviour {
 	case elevator.EB_DoorOpen:
@@ -105,4 +103,4 @@ func Fsm_onDoorTimeout(e elevator.Elevator) elevator.Elevator {
 		}
 	}
 	return e
-}
+}*/

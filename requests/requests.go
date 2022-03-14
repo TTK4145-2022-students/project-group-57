@@ -13,7 +13,7 @@ type AllRequests struct {
 	Requests [elevio.NumFloors][elevio.NumButtonTypes]bool
 }
 
-func RequestsAbove(e elevator.Elevator) bool {
+/*func RequestsAbove(e elevator.Elevator) bool {
 	for i := e.Floor + 1; i < elevio.NumFloors; i++ {
 		for btn := 0; btn < elevio.NumButtonTypes; btn++ {
 			if e.Requests[i][btn] {
@@ -22,7 +22,7 @@ func RequestsAbove(e elevator.Elevator) bool {
 		}
 	}
 	return false
-}
+}*/
 
 func MasterRequestsAbove(e elevator.Elevator, reqs AllRequests) bool {
 	for i := e.Floor + 1; i < elevio.NumFloors; i++ {
@@ -35,7 +35,7 @@ func MasterRequestsAbove(e elevator.Elevator, reqs AllRequests) bool {
 	return false
 }
 
-func RequestsBelow(e elevator.Elevator) bool {
+/*func RequestsBelow(e elevator.Elevator) bool {
 	for i := 0; i < e.Floor; i++ {
 		for btn := 0; btn < elevio.NumButtonTypes; btn++ {
 			if e.Requests[i][btn] {
@@ -44,7 +44,7 @@ func RequestsBelow(e elevator.Elevator) bool {
 		}
 	}
 	return false
-}
+}*/
 
 func MasterRequestsBelow(e elevator.Elevator, reqs AllRequests) bool {
 	for i := 0; i < e.Floor; i++ {
@@ -57,14 +57,14 @@ func MasterRequestsBelow(e elevator.Elevator, reqs AllRequests) bool {
 	return false
 }
 
-func RequestsHere(e elevator.Elevator) bool {
+/*func RequestsHere(e elevator.Elevator) bool {
 	for btn := 0; btn < elevio.NumButtonTypes; btn++ {
 		if e.Requests[e.Floor][btn] {
 			return true
 		}
 	}
 	return false
-}
+}*/
 
 func MasterRequestsHere(e elevator.Elevator, reqs AllRequests) bool {
 	for btn := 0; btn < elevio.NumButtonTypes; btn++ {
@@ -75,7 +75,7 @@ func MasterRequestsHere(e elevator.Elevator, reqs AllRequests) bool {
 	return false
 }
 
-func RequestsNextAction(e elevator.Elevator) Action {
+/*func RequestsNextAction(e elevator.Elevator) Action {
 	switch e.Dirn {
 	case elevio.MD_Up:
 		if RequestsAbove(e) {
@@ -110,7 +110,7 @@ func RequestsNextAction(e elevator.Elevator) Action {
 	default:
 		return Action{elevio.MD_Stop, elevator.EB_Idle}
 	}
-}
+}*/
 
 func MasterRequestsNextAction(e elevator.Elevator, reqs AllRequests) Action {
 	switch e.Dirn {
@@ -149,7 +149,7 @@ func MasterRequestsNextAction(e elevator.Elevator, reqs AllRequests) Action {
 	}
 }
 
-func RequestShouldStop(e elevator.Elevator) bool {
+/*func RequestShouldStop(e elevator.Elevator) bool {
 	switch e.Dirn {
 	case elevio.MD_Down:
 		return e.Requests[e.Floor][elevio.BT_HallDown] || e.Requests[e.Floor][elevio.BT_Cab] || !RequestsBelow(e)
@@ -160,7 +160,7 @@ func RequestShouldStop(e elevator.Elevator) bool {
 	default:
 		return true
 	}
-}
+}*/
 
 func MasterRequestShouldStop(e elevator.Elevator, reqs AllRequests) bool {
 	switch e.Dirn {
@@ -175,7 +175,7 @@ func MasterRequestShouldStop(e elevator.Elevator, reqs AllRequests) bool {
 	}
 }
 
-func ClearRequestImmediately(e elevator.Elevator, btnFloor int, btnType elevio.ButtonType) int {
+/*func ClearRequestImmediately(e elevator.Elevator, btnFloor int, btnType elevio.ButtonType) int {
 	if e.Floor == btnFloor {
 		if e.Dirn == elevio.MD_Up && btnType == elevio.BT_HallUp {
 			return 1
@@ -189,11 +189,11 @@ func ClearRequestImmediately(e elevator.Elevator, btnFloor int, btnType elevio.B
 		return 0
 	}
 	return 0
-}
+}*/
 
 //Clears all requests in the floor when the elevator stops
 //This might have to be changed, assumes that everyone enters the elevator in the floor, regardless of direction
-func ClearRequestCurrentFloor(e elevator.Elevator) elevator.Elevator {
+/*func ClearRequestCurrentFloor(e elevator.Elevator) elevator.Elevator {
 	e.Requests[e.Floor][elevio.BT_Cab] = false
 	elevio.SetButtonLamp(elevio.BT_Cab, e.Floor, false)
 	e.Requests[e.Floor][elevio.BT_HallUp] = false
@@ -201,7 +201,7 @@ func ClearRequestCurrentFloor(e elevator.Elevator) elevator.Elevator {
 	e.Requests[e.Floor][elevio.BT_HallDown] = false
 	elevio.SetButtonLamp(elevio.BT_HallDown, e.Floor, false)
 	return e
-}
+}*/
 func MasterClearRequestCurrentFloor(e elevator.Elevator, reqs AllRequests) (elevator.Elevator, AllRequests) {
 	reqs.Requests[e.Floor][elevio.BT_Cab] = false
 	//elevio.SetButtonLamp(elevio.BT_Cab, e.Floor, false)

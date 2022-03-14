@@ -20,9 +20,9 @@ var _conn net.Conn
 type MotorDirection int
 
 const (
-	MD_Up   MotorDirection = 1
 	MD_Down                = -1
 	MD_Stop                = 0
+	MD_Up   MotorDirection = 1
 )
 
 type ButtonType int
@@ -36,6 +36,18 @@ const (
 type ButtonEvent struct {
 	Floor  int
 	Button ButtonType
+}
+
+func MotorDirToString(motorDir MotorDirection) string {
+	switch motorDir {
+	case MD_Down:
+		return "down"
+	case MD_Up:
+		return "up"
+	case MD_Stop:
+		return "stop"
+	}
+	return "err"
 }
 
 func Init(addr string, numFloors int) {

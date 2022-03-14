@@ -25,10 +25,10 @@ func main() {
 	elevio.Init("localhost:15659", numFloors)
 
 	e1 := elevator.Elevator{
-		Floor:     elevio.GetFloor(),
-		Dirn:      elevio.MD_Stop,
-		Requests:  [elevio.NumFloors][elevio.NumButtonTypes]bool{},
-		Behaviour: elevator.EB_Idle,
+		Behaviour:   elevator.EB_Idle,
+		Floor:       elevio.GetFloor(),
+		Dirn:        elevio.MD_Stop,
+		CabRequests: [elevio.NumFloors]bool{},
 	}
 
 	if e1.Floor == -1 {
