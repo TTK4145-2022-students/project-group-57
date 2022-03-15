@@ -27,7 +27,7 @@ func main() {
 	e1 := elevator.Elevator{
 		Behaviour:   elevator.EB_Idle,
 		Floor:       elevio.GetFloor(),
-		Dirn:        elevio.MD_Stop,
+		Dirn:        elevio.MotorDirToString(elevio.MD_Stop),
 		CabRequests: [elevio.NumFloors]bool{},
 	}
 
@@ -54,7 +54,7 @@ func main() {
 	slaveButtonTx := make(chan SlaveButtonEventMsg)
 	slaveFloorTx := make(chan int)
 	slaveAckOrderDoneTx := make(chan bool)
-	masterMotorDirRx := make(chan int)
+	masterMotorDirRx := make(chan string)
 	masterAckOrderRx := make(chan MasterAckOrderMsg) // burde lage en struct med button_type og floor
 	masterTurnOffOrderLightRx := make(chan int)
 	slaveDoorOpened := make(chan bool)
@@ -131,8 +131,8 @@ func main() {
 			}
 
 		case a := <-masterMotorDirRx: //Recieve direction from master
-			e1.Dirn = (elevio.MotorDirection(a))
-			elevio.SetMotorDirection(e1.Dirn)
+			e1.Dirn = a
+			elevio.SetMotorDirection(elevio.StringToMotorDir(e1.Dirn))
 			stateChan <- e1
 
 		case a := <-masterAckOrderRx:

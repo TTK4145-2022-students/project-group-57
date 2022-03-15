@@ -50,6 +50,18 @@ func MotorDirToString(motorDir MotorDirection) string {
 	return "err"
 }
 
+func StringToMotorDir(motorDir string) MotorDirection {
+	switch motorDir {
+	case "down":
+		return MD_Down
+	case "up":
+		return MD_Up
+	case "stop":
+		return MD_Stop
+	}
+	return 0
+}
+
 func Init(addr string, numFloors int) {
 	if _initialized {
 		fmt.Println("Driver already initialized!")

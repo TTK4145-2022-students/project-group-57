@@ -13,29 +13,17 @@ const (
 )
 
 type Elevator struct {
-	Behaviour   ElevatorBehaviour
-	Floor       int
-	Dirn        elevio.MotorDirection
-	CabRequests [elevio.NumFloors]bool
-}
-
-type NewElevator struct {
 	Behaviour   ElevatorBehaviour      `json:"behaviour"`
 	Floor       int                    `json:"floor"`
-	Dirn        elevio.MotorDirection  `json:"direction"`
+	Dirn        string                 `json:"direction"`
 	CabRequests [elevio.NumFloors]bool `json:"cabRequests"`
-}
-
-type StateStruct struct {
-	ID                 string
-	LocalElevatorState NewElevator
 }
 
 func ElevatorUninitialized() Elevator {
 	uninitElevator := Elevator{
-		Floor:     -1,
-		Dirn:      elevio.MD_Stop,
 		Behaviour: EB_Idle,
+		Floor:     -1,
+		Dirn:      elevio.MotorDirToString(elevio.MD_Stop),
 	}
 	return uninitElevator
 }

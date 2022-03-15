@@ -15,6 +15,8 @@ package main
 //Master-message
 //Need to include: All relevant info + iterate/versionnr
 
+//Logic need to use MasterRequest and not ElevatorRequests
+
 import (
 	"encoding/json"
 	"fmt"
@@ -46,35 +48,24 @@ type HRAElevState struct {
 }
 
 type HRAInput struct {
-	HallRequests [][2]bool               `json:"hallRequests"`
-	States       map[string]HRAElevState `json:"states"`
+	HallRequests [][2]bool                    `json:"hallRequests"`
+	States       map[string]elevator.Elevator `json:"states"`
 }
 
 var e1 elevator.Elevator
 var MasterRequests requests.AllRequests
+var MasterHallRequests requests.MasterHallRequests
 
 func main() {
-
-	//At the moment this is just to test hallRequestAssigner
-	e1HRA := HRAElevState{
-		Behavior:    "idle",
-		Floor:       1,                                       //jalla
-		Direction:   elevio.MotorDirToString(elevio.MD_Stop), //This is important
-		CabRequests: [elevio.NumFloors]bool{},
-	}
-
-	//need this as long as the rest of the code isnt rewritten to e1HRA
 	e1 := elevator.Elevator{
 		Floor:     1, //jalla
-		Dirn:      elevio.MD_Stop,
+		Dirn:      elevio.MotorDirToString(elevio.MD_Stop),
 		Behaviour: elevator.EB_Idle,
 	}
 	if e1.Floor == -1 {
 		e1 = fsm.Fsm_onInitBetweenFloors(e1)
-		e1HRA.Floor = e1.Floor
 	}
 
-	fmt.Println(e1HRA)
 	hraExecutable := ""
 	switch runtime.GOOS {
 	case "linux":
@@ -88,8 +79,8 @@ func main() {
 	//Using elevatorstate as input, HallRequests need to be replaced with MasterRequests
 	MasterStruct := HRAInput{
 		HallRequests: [][2]bool{{false, false}, {true, false}, {false, false}, {false, true}},
-		States: map[string]HRAElevState{
-			"one": e1HRA,
+		States: map[string]elevator.Elevator{
+			"one": e1,
 		},
 	}
 
@@ -110,9 +101,13 @@ func main() {
 		fmt.Printf("%6v :  %+v\n", k, v)
 	}
 
+	fmt.Println(output)
+	AssignedRequests := output
+	fmt.Println(AssignedRequests)
+
 	slaveButtonRx := make(chan SlaveButtonEventMsg)
 	slaveFloorRx := make(chan int)
-	masterCommandMD := make(chan int)
+	masterCommandMD := make(chan string)
 	masterAckOrder := make(chan MasterAckOrderMsg)
 	slaveAckOrderDoneRx := make(chan bool)
 	masterTurnOffOrderLightTx := make(chan int)
@@ -131,49 +126,46 @@ func main() {
 	go broadcast.Transmitter(16518, masterTurnOffOrderLightTx)
 	go broadcast.Transmitter(16520, commandDoorOpen)
 
-	doorTimer := time.NewTimer(20 * time.Second)
-
-	fmt.Println("Dir before string:")
-	fmt.Println(e1.Dirn)
-	fmt.Println("Dir after string:")
-	fmt.Println(elevio.MotorDirToString(e1.Dirn))
+	doorTimer := time.NewTimer(20 * time.Second) //Trouble initializing timer like this, maybe
 
 	for {
 		select {
-		case slaveMsg := <-slaveButtonRx: //New order from slave
-			//Initial order starting here (first)
+		case slaveMsg := <-slaveButtonRx:
 			fmt.Println("Floor")
 			fmt.Println(slaveMsg.Btn_floor)
 			fmt.Println("Button type")
 			fmt.Println(slaveMsg.Btn_type)
 			fmt.Println(" ")
 
-			MasterRequests.Requests[slaveMsg.Btn_floor][slaveMsg.Btn_type] = true //Saving requests in master
+			MasterRequests.Requests[slaveMsg.Btn_floor][slaveMsg.Btn_type] = true
 			fmt.Println(MasterRequests)
 
+			if slaveMsg.Btn_type != 2 {
+				MasterHallRequests.Requests[slaveMsg.Btn_floor][slaveMsg.Btn_type] = true //cant include cab
+			}
+			fmt.Println(MasterHallRequests)
 			if e1.Behaviour == elevator.EB_Idle {
-				nextAction := requests.MasterRequestsNextAction(e1, MasterRequests)
+				nextAction := requests.RequestsNextAction(e1, MasterRequests)
 				e1.Behaviour = nextAction.Behaviour
-				e1.Dirn = nextAction.Dirn
-				masterCommandMD <- int(e1.Dirn)
+				e1.Dirn = elevio.MotorDirToString(nextAction.Dirn)
+				masterCommandMD <- e1.Dirn
 			}
 
 			masterAckOrder <- MasterAckOrderMsg{int(slaveMsg.Btn_floor), slaveMsg.Btn_type}
 
-		case slaveMsg := <-slaveFloorRx: //New floor from slave
-			//Next action given here, but only in same direction of elevator(?)
+		case slaveMsg := <-slaveFloorRx:
 			e1.Floor = slaveMsg
 			fmt.Println("Behaviour")
 			fmt.Println(e1.Behaviour)
 			fmt.Println("direction")
 			fmt.Println(e1.Dirn)
-			a := requests.MasterRequestsNextAction(e1, MasterRequests)
+			a := requests.RequestsNextAction(e1, MasterRequests)
 			e1.Behaviour = a.Behaviour
-			e1.Dirn = a.Dirn
+			e1.Dirn = elevio.MotorDirToString(a.Dirn)
 			if e1.Behaviour == elevator.EB_DoorOpen {
 				commandDoorOpen <- true
 			} else {
-				masterCommandMD <- int(a.Dirn)
+				masterCommandMD <- e1.Dirn
 			}
 
 		case slaveMsg := <-slaveDoorOpened:
@@ -182,24 +174,28 @@ func main() {
 				MasterRequests.Requests[e1.Floor][0] = false
 				MasterRequests.Requests[e1.Floor][1] = false
 				MasterRequests.Requests[e1.Floor][2] = false
+
+				MasterHallRequests.Requests[e1.Floor][0] = false
+				MasterHallRequests.Requests[e1.Floor][1] = false
+
+				fmt.Println(MasterHallRequests)
+
 				masterTurnOffOrderLightTx <- e1.Floor
 				doorTimer.Stop()
 				doorTimer.Reset(3 * time.Second)
 			} else {
-				a := requests.MasterRequestsNextAction(e1, MasterRequests)
-				e1.Dirn = a.Dirn
+				a := requests.RequestsNextAction(e1, MasterRequests)
+				e1.Dirn = elevio.MotorDirToString(a.Dirn)
 				e1.Behaviour = a.Behaviour
 
 				switch e1.Behaviour {
 				case elevator.EB_DoorOpen:
-					e1, MasterRequests = requests.MasterClearRequestCurrentFloor(e1, MasterRequests)
-					//fsm.SetAllLights(e1)
-					//elevio.SetButtonLamp(elevio.BT_HallDown, e.Floor, false)
+					e1, MasterRequests = requests.ClearRequestCurrentFloor(e1, MasterRequests)
 					masterTurnOffOrderLightTx <- e1.Floor
 				case elevator.EB_Moving:
-					masterCommandMD <- int(e1.Dirn)
+					masterCommandMD <- e1.Dirn
 				case elevator.EB_Idle:
-					masterCommandMD <- int(e1.Dirn)
+					masterCommandMD <- e1.Dirn
 				}
 			}
 		case <-doorTimer.C:
@@ -209,10 +205,3 @@ func main() {
 	}
 
 }
-
-//Add check to see if order queue is empty or if new order need to be executed
-
-//Dont tell elevator to move inside buttonevent
-
-//include functionality from onDoorTimeout to check if elevator should continue
-//moving after opening door in a floor
