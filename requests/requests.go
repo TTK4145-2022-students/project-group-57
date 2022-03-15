@@ -10,16 +10,16 @@ type Action struct {
 	Behaviour elevator.ElevatorBehaviour
 }
 type AllRequests struct {
-	Requests [elevio.NumFloors][elevio.NumButtonTypes]bool
+	Requests [][]bool
 }
 
 type MasterHallRequests struct {
 	Requests [elevio.NumFloors][2]bool
 }
 
-func RequestsAbove(e elevator.Elevator, reqs AllRequests) bool {
+func RequestsAbove(e elevator.Elevator, reqs MasterHallRequests) bool {
 	for i := e.Floor + 1; i < elevio.NumFloors; i++ {
-		for btn := 0; btn < elevio.NumButtonTypes; btn++ {
+		for btn := 0; btn < 2; btn++ {
 			if reqs.Requests[i][btn] {
 				return true
 			}
@@ -28,9 +28,9 @@ func RequestsAbove(e elevator.Elevator, reqs AllRequests) bool {
 	return false
 }
 
-func RequestsBelow(e elevator.Elevator, reqs AllRequests) bool {
+func RequestsBelow(e elevator.Elevator, reqs MasterHallRequests) bool {
 	for i := 0; i < e.Floor; i++ {
-		for btn := 0; btn < elevio.NumButtonTypes; btn++ {
+		for btn := 0; btn < 2; btn++ {
 			if reqs.Requests[i][btn] {
 				return true
 			}
@@ -39,8 +39,9 @@ func RequestsBelow(e elevator.Elevator, reqs AllRequests) bool {
 	return false
 }
 
-func RequestsHere(e elevator.Elevator, reqs AllRequests) bool {
-	for btn := 0; btn < elevio.NumButtonTypes; btn++ {
+//Modified to work without cabreqs
+func RequestsHere(e elevator.Elevator, reqs MasterHallRequests) bool {
+	for btn := 0; btn < 2; btn++ {
 		if reqs.Requests[e.Floor][btn] {
 			return true
 		}
@@ -48,7 +49,7 @@ func RequestsHere(e elevator.Elevator, reqs AllRequests) bool {
 	return false
 }
 
-func RequestsNextAction(e elevator.Elevator, reqs AllRequests) Action {
+func RequestsNextAction(e elevator.Elevator, reqs MasterHallRequests) Action {
 	switch e.Dirn {
 	case "up":
 		if RequestsAbove(e, reqs) {
@@ -85,12 +86,12 @@ func RequestsNextAction(e elevator.Elevator, reqs AllRequests) Action {
 	}
 }
 
-func RequestShouldStop(e elevator.Elevator, reqs AllRequests) bool {
+func RequestShouldStop(e elevator.Elevator, reqs MasterHallRequests) bool {
 	switch e.Dirn {
 	case "down":
-		return reqs.Requests[e.Floor][elevio.BT_HallDown] || reqs.Requests[e.Floor][elevio.BT_Cab] || !RequestsBelow(e, reqs)
+		return reqs.Requests[e.Floor][elevio.BT_HallDown] || !RequestsBelow(e, reqs)
 	case "up":
-		return reqs.Requests[e.Floor][elevio.BT_HallUp] || reqs.Requests[e.Floor][elevio.BT_Cab] || !RequestsAbove(e, reqs)
+		return reqs.Requests[e.Floor][elevio.BT_HallUp] || !RequestsAbove(e, reqs)
 	case "stop":
 		return true
 	default:
@@ -98,8 +99,8 @@ func RequestShouldStop(e elevator.Elevator, reqs AllRequests) bool {
 	}
 }
 
-func ClearRequestCurrentFloor(e elevator.Elevator, reqs AllRequests) (elevator.Elevator, AllRequests) {
-	reqs.Requests[e.Floor][elevio.BT_Cab] = false
+func ClearRequestCurrentFloor(e elevator.Elevator, reqs MasterHallRequests) (elevator.Elevator, MasterHallRequests) {
+	//reqs.Requests[e.Floor][elevio.BT_Cab] = false
 	//elevio.SetButtonLamp(elevio.BT_Cab, e.Floor, false)
 	reqs.Requests[e.Floor][elevio.BT_HallUp] = false
 	//elevio.SetButtonLamp(elevio.BT_HallUp, e.Floor, false)

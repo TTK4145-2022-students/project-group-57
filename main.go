@@ -40,15 +40,8 @@ type MasterAckOrderMsg struct {
 	Btn_type  int
 }
 
-type HRAElevState struct {
-	Behavior    string                 `json:"behaviour"`
-	Floor       int                    `json:"floor"`
-	Direction   string                 `json:"direction"`
-	CabRequests [elevio.NumFloors]bool `json:"cabRequests"`
-}
-
 type HRAInput struct {
-	HallRequests [][2]bool                    `json:"hallRequests"`
+	HallRequests [elevio.NumFloors][2]bool    `json:"hallRequests"`
 	States       map[string]elevator.Elevator `json:"states"`
 }
 
@@ -57,10 +50,13 @@ var MasterRequests requests.AllRequests
 var MasterHallRequests requests.MasterHallRequests
 
 func main() {
+	MasterHallRequests.Requests = [elevio.NumFloors][2]bool{}
+	fmt.Println(MasterHallRequests)
 	e1 := elevator.Elevator{
-		Floor:     1, //jalla
-		Dirn:      elevio.MotorDirToString(elevio.MD_Stop),
-		Behaviour: elevator.EB_Idle,
+		Floor:       1, //jalla
+		Dirn:        elevio.MotorDirToString(elevio.MD_Stop),
+		Behaviour:   elevator.EB_Idle,
+		CabRequests: [elevio.NumFloors]bool{},
 	}
 	if e1.Floor == -1 {
 		e1 = fsm.Fsm_onInitBetweenFloors(e1)
@@ -78,7 +74,7 @@ func main() {
 
 	//Using elevatorstate as input, HallRequests need to be replaced with MasterRequests
 	MasterStruct := HRAInput{
-		HallRequests: [][2]bool{{false, false}, {true, false}, {false, false}, {false, true}},
+		HallRequests: [elevio.NumFloors][2]bool{{false, false}, {true, false}, {false, false}, {false, true}},
 		States: map[string]elevator.Elevator{
 			"one": e1,
 		},
@@ -136,18 +132,30 @@ func main() {
 			fmt.Println("Button type")
 			fmt.Println(slaveMsg.Btn_type)
 			fmt.Println(" ")
-
-			MasterRequests.Requests[slaveMsg.Btn_floor][slaveMsg.Btn_type] = true
-			fmt.Println(MasterRequests)
-
-			if slaveMsg.Btn_type != 2 {
-				MasterHallRequests.Requests[slaveMsg.Btn_floor][slaveMsg.Btn_type] = true //cant include cab
+			if slaveMsg.Btn_type == 2 {
+				e1.CabRequests[slaveMsg.Btn_floor] = true
+			} else {
+				MasterHallRequests.Requests[slaveMsg.Btn_floor][slaveMsg.Btn_type] = true
 			}
+			MasterStruct.HallRequests = MasterHallRequests.Requests
+			MasterStruct.States["one"] = e1
+			fmt.Println("Hallrequests: ")
 			fmt.Println(MasterHallRequests)
-			if e1.Behaviour == elevator.EB_Idle {
-				nextAction := requests.RequestsNextAction(e1, MasterRequests)
+			fmt.Println("Cabrequests: ")
+			fmt.Println(e1.CabRequests)
+			fmt.Println("Masterstruct: ")
+			fmt.Println(MasterStruct)
+
+			fmt.Println(e1.Behaviour)
+			fmt.Println(e1.Dirn)
+
+			if e1.Behaviour == "idle" {
+				fmt.Println("inside if")
+				nextAction := requests.RequestsNextAction(e1, MasterHallRequests)
 				e1.Behaviour = nextAction.Behaviour
 				e1.Dirn = elevio.MotorDirToString(nextAction.Dirn)
+				fmt.Println(e1.Behaviour)
+				fmt.Println(e1.Dirn)
 				masterCommandMD <- e1.Dirn
 			}
 
@@ -159,7 +167,8 @@ func main() {
 			fmt.Println(e1.Behaviour)
 			fmt.Println("direction")
 			fmt.Println(e1.Dirn)
-			a := requests.RequestsNextAction(e1, MasterRequests)
+
+			a := requests.RequestsNextAction(e1, MasterHallRequests)
 			e1.Behaviour = a.Behaviour
 			e1.Dirn = elevio.MotorDirToString(a.Dirn)
 			if e1.Behaviour == elevator.EB_DoorOpen {
@@ -171,9 +180,10 @@ func main() {
 		case slaveMsg := <-slaveDoorOpened:
 			if slaveMsg {
 				e1.Behaviour = elevator.EB_DoorOpen
-				MasterRequests.Requests[e1.Floor][0] = false
+				/*MasterRequests.Requests[e1.Floor][0] = false
 				MasterRequests.Requests[e1.Floor][1] = false
 				MasterRequests.Requests[e1.Floor][2] = false
+				*/
 
 				MasterHallRequests.Requests[e1.Floor][0] = false
 				MasterHallRequests.Requests[e1.Floor][1] = false
@@ -184,13 +194,15 @@ func main() {
 				doorTimer.Stop()
 				doorTimer.Reset(3 * time.Second)
 			} else {
-				a := requests.RequestsNextAction(e1, MasterRequests)
+				a := requests.RequestsNextAction(e1, MasterHallRequests)
 				e1.Dirn = elevio.MotorDirToString(a.Dirn)
 				e1.Behaviour = a.Behaviour
+				fmt.Println("New action received")
+				fmt.Println(e1.Behaviour)
 
 				switch e1.Behaviour {
 				case elevator.EB_DoorOpen:
-					e1, MasterRequests = requests.ClearRequestCurrentFloor(e1, MasterRequests)
+					e1, MasterHallRequests = requests.ClearRequestCurrentFloor(e1, MasterHallRequests)
 					masterTurnOffOrderLightTx <- e1.Floor
 				case elevator.EB_Moving:
 					masterCommandMD <- e1.Dirn
@@ -205,3 +217,10 @@ func main() {
 	}
 
 }
+
+//Reassigning orders at each new action/event?
+//How to request next action based on which elevator?:
+//Each channel includes which elevator it comes from?
+//-cons many channels (maybe necessary?)
+//Not sending MasterRequests as input to request-funcs
+//Send rather corresponding request-array from hra-output
