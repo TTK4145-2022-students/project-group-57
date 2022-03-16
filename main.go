@@ -25,29 +25,15 @@ import (
 	"master/fsm"
 	"master/network/broadcast"
 	"master/requests"
+	"master/types"
 	"os/exec"
 	"runtime"
 	"time"
 )
 
-type SlaveButtonEventMsg struct {
-	Btn_floor int
-	Btn_type  int
-}
-
-type MasterAckOrderMsg struct {
-	Btn_floor int
-	Btn_type  int
-}
-
-type HRAInput struct {
-	HallRequests [elevio.NumFloors][2]bool    `json:"hallRequests"`
-	States       map[string]elevator.Elevator `json:"states"`
-}
-
 var e1 elevator.Elevator
-var MasterRequests requests.AllRequests
-var MasterHallRequests requests.MasterHallRequests
+var MasterRequests types.AllRequests
+var MasterHallRequests types.MasterHallRequests
 
 func main() {
 	MasterHallRequests.Requests = [elevio.NumFloors][2]bool{}
@@ -73,7 +59,7 @@ func main() {
 	}
 
 	//Using elevatorstate as input, HallRequests need to be replaced with MasterRequests
-	MasterStruct := HRAInput{
+	MasterStruct := types.HRAInput{
 		HallRequests: [elevio.NumFloors][2]bool{{false, false}, {true, false}, {false, false}, {false, true}},
 		States: map[string]elevator.Elevator{
 			"one": e1,
@@ -101,10 +87,10 @@ func main() {
 	AssignedRequests := output
 	fmt.Println(AssignedRequests)
 
-	slaveButtonRx := make(chan SlaveButtonEventMsg)
-	slaveFloorRx := make(chan int)
+	slaveButtonRx := make(chan types.SlaveButtonEventMsg)
+	slaveFloorRx := make(chan types.SlaveFloor)
 	masterCommandMD := make(chan string)
-	masterAckOrder := make(chan MasterAckOrderMsg)
+	masterAckOrder := make(chan types.MasterAckOrderMsg)
 	slaveAckOrderDoneRx := make(chan bool)
 	masterTurnOffOrderLightTx := make(chan int)
 	slaveState := make(chan elevator.Elevator)
@@ -159,14 +145,42 @@ func main() {
 				masterCommandMD <- e1.Dirn
 			}
 
-			masterAckOrder <- MasterAckOrderMsg{int(slaveMsg.Btn_floor), slaveMsg.Btn_type}
+			masterAckOrder <- types.MasterAckOrderMsg{int(slaveMsg.Btn_floor), slaveMsg.Btn_type}
 
 		case slaveMsg := <-slaveFloorRx:
-			e1.Floor = slaveMsg
-			fmt.Println("Behaviour")
+			//send to correct ID
+			elevatorID := slaveMsg.ID
+			elevatorFloor := slaveMsg.NewFloor
+			fmt.Println(elevatorID)
+			fmt.Println(elevatorFloor)
 			fmt.Println(e1.Behaviour)
 			fmt.Println("direction")
 			fmt.Println(e1.Dirn)
+
+			MasterStruct.States["one"] = e1
+
+			/*input := MasterStruct
+
+			jsonBytes, err := json.Marshal(input)
+			fmt.Println("json.Marshal error: ", err)
+
+			ret, err := exec.Command("hall_request_assigner/"+hraExecutable, "-i", string(jsonBytes)).Output()
+			fmt.Println("exec.Command error: ", err)
+
+			output = new(map[string][][2]bool)
+			err = json.Unmarshal(ret, &output)
+			fmt.Println("json.Unmarshal error: ", err)
+			fmt.Println(*output)
+			for _, v := range *output {
+				fmt.Printf("%+v\n", v)
+				fmt.Println(v[1])
+				HallReqs := v
+				//requests.RequestsNextAction()
+				fmt.Println("Hallreqs: ")
+				fmt.Println(HallReqs)
+			}*/
+			//b := requests.RequestsNextAction(MasterStruct.States["one"], *output) //Like this
+			//fmt.Println(b)
 
 			a := requests.RequestsNextAction(e1, MasterHallRequests)
 			e1.Behaviour = a.Behaviour

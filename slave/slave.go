@@ -6,18 +6,10 @@ import (
 	"master/elevator"
 	"master/fsm"
 	"master/network/broadcast"
+	"master/types"
 )
 
 //These structs will be JSON
-
-type SlaveButtonEventMsg struct {
-	Btn_floor int
-	Btn_type  int
-}
-type MasterAckOrderMsg struct {
-	Btn_floor int
-	Btn_type  int
-}
 
 func main() {
 
@@ -51,11 +43,11 @@ func main() {
 
 	commandDoorOpen := make(chan bool)
 	stateChan := make(chan elevator.Elevator)
-	slaveButtonTx := make(chan SlaveButtonEventMsg)
-	slaveFloorTx := make(chan int)
+	slaveButtonTx := make(chan types.SlaveButtonEventMsg)
+	slaveFloorTx := make(chan types.SlaveFloor)
 	slaveAckOrderDoneTx := make(chan bool)
 	masterMotorDirRx := make(chan string)
-	masterAckOrderRx := make(chan MasterAckOrderMsg) // burde lage en struct med button_type og floor
+	masterAckOrderRx := make(chan types.MasterAckOrderMsg) // burde lage en struct med button_type og floor
 	masterTurnOffOrderLightRx := make(chan int)
 	slaveDoorOpened := make(chan bool)
 
@@ -83,7 +75,7 @@ func main() {
 	for {
 		select {
 		case a := <-drv_buttons:
-			buttonEvent := SlaveButtonEventMsg{a.Floor, int(a.Button)} //Maybe a go routine
+			buttonEvent := types.SlaveButtonEventMsg{a.Floor, int(a.Button)} //Maybe a go routine
 			slaveButtonTx <- buttonEvent
 			fmt.Println("Floor")
 			fmt.Println(buttonEvent.Btn_floor)
@@ -93,12 +85,16 @@ func main() {
 
 		case a := <-drv_floors:
 			//update local state
-			floorEvent := a //Maybe a go routine
+			/*floorEvent := a //Maybe a go routine
 			slaveFloorTx <- floorEvent
 			e1.Floor = a
-			stateChan <- e1
+			stateChan <- e1*/
+
+			floorEvent := types.SlaveFloor{ID: "one", NewFloor: a}
+			slaveFloorTx <- floorEvent
+
 			fmt.Println("Arrived at floor:")
-			fmt.Println(floorEvent)
+			fmt.Println(floorEvent.NewFloor)
 			fmt.Println("")
 
 			elevio.SetFloorIndicator(a)
