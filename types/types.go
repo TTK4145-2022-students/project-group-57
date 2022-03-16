@@ -1,17 +1,27 @@
 package types
 
 import (
-	"master/Driver-go/elevio"
 	"master/elevator"
 )
 
 type SlaveButtonEventMsg struct {
+	ID        string
 	Btn_floor int
 	Btn_type  int
 }
 type MasterAckOrderMsg struct {
 	Btn_floor int
 	Btn_type  int
+}
+
+type DoorOpen struct {
+	ID          string
+	SetDoorOpen bool
+}
+
+type MasterCommand struct {
+	ID       string
+	Motordir string
 }
 
 type SlaveFloor struct {
@@ -24,10 +34,14 @@ type AllRequests struct {
 }
 
 type MasterHallRequests struct {
-	Requests [elevio.NumFloors][2]bool
+	Requests [][2]bool
+}
+
+type ElevatorHallRequests struct {
+	Requests [][2]bool
 }
 
 type HRAInput struct {
-	HallRequests [elevio.NumFloors][2]bool    `json:"hallRequests"`
+	HallRequests [][2]bool                    `json:"hallRequests"`
 	States       map[string]elevator.Elevator `json:"states"`
 }
