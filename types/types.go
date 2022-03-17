@@ -2,6 +2,7 @@ package types
 
 import (
 	"master/elevator"
+	"master/requests"
 )
 
 type SlaveButtonEventMsg struct {
@@ -44,4 +45,15 @@ type ElevatorHallRequests struct {
 type HRAInput struct {
 	HallRequests [][2]bool                    `json:"hallRequests"`
 	States       map[string]elevator.Elevator `json:"states"`
+}
+
+type SetOrderLight struct {
+	BtnFloor int
+	BtnType  int
+	LightOn  bool
+}
+
+type NewAction struct {
+	ID     string
+	Action requests.Action
 }

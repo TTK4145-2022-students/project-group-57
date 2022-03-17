@@ -7,6 +7,7 @@ import (
 	"master/fsm"
 	"master/network/broadcast"
 	"master/types"
+	"time"
 )
 
 //These structs will be JSON
@@ -24,8 +25,8 @@ func main() {
 		CabRequests: [elevio.NumFloors]bool{},
 	}
 
-	if e1.Floor == -1 {
-		e1 = fsm.Fsm_onInitBetweenFloors(e1)
+	if elevio.GetFloor() == -1 {
+		elevio.SetMotorDirection(elevio.MD_Down)
 	}
 
 	fsm.SetAllLights(e1)
@@ -47,7 +48,7 @@ func main() {
 	slaveFloorTx := make(chan types.SlaveFloor)
 	masterMotorDirRx := make(chan types.MasterCommand)
 	masterAckOrderRx := make(chan types.MasterAckOrderMsg) // burde lage en struct med button_type og floor
-	masterSetOrderLight := make(chan int)
+	masterSetOrderLight := make(chan types.SetOrderLight)
 	slaveDoorOpened := make(chan types.DoorOpen)
 
 	//obstructionActive := false
@@ -65,6 +66,9 @@ func main() {
 	go broadcast.Receiver(16516, masterAckOrderRx)
 	go broadcast.Receiver(16518, masterSetOrderLight)
 	go broadcast.Receiver(16520, commandDoorOpen)
+
+	doorTimer := time.NewTimer(100 * time.Second) //Trouble initializing timer like this, maybe
+	doorIsOpen := false
 
 	for {
 		select {
@@ -118,23 +122,31 @@ func main() {
 		case a := <-masterMotorDirRx: //Recieve direction from master
 			fmt.Println("Received dir")
 			if a.ID == MyID {
-				e1.Dirn = a.Motordir
-				elevio.SetMotorDirection(elevio.StringToMotorDir(e1.Dirn))
+				if !doorIsOpen {
+					elevio.SetMotorDirection(elevio.StringToMotorDir(a.Motordir))
+				}
 			}
 
 		case a := <-masterAckOrderRx:
 			elevio.SetButtonLamp(elevio.ButtonType(a.Btn_type), a.Btn_floor, true)
 
 		case a := <-masterSetOrderLight:
-			elevio.SetButtonLamp(0, a, false)
-			elevio.SetButtonLamp(1, a, false)
-			elevio.SetButtonLamp(2, a, false)
+			elevio.SetButtonLamp(elevio.ButtonType(a.BtnType), a.BtnFloor, a.LightOn)
 
 		case a := <-commandDoorOpen:
+			doorIsOpen = true
 			if a.ID == MyID {
 				elevio.SetDoorOpenLamp(a.SetDoorOpen)
+				if a.SetDoorOpen {
+					doorTimer.Stop()
+					doorTimer.Reset(3 * time.Second)
+				}
 				slaveDoorOpened <- a
 			}
+		case <-doorTimer.C:
+			doorIsOpen = false
+			elevio.SetDoorOpenLamp(false)
+			slaveDoorOpened <- types.DoorOpen{ID: MyID, SetDoorOpen: false}
 		}
 	}
 }

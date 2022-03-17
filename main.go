@@ -25,7 +25,7 @@ import (
 	"master/fsm"
 	"master/master"
 	"master/network/broadcast"
-	"master/requests"
+	"master/network/peers"
 	"master/types"
 	"os/exec"
 	"runtime"
@@ -55,6 +55,10 @@ func main() {
 		e1 = fsm.Fsm_onInitBetweenFloors(e2)
 	}
 
+	//PeerList := peers.PeerUpdate{Peers: "one", New: "", Lost: ""}
+	var PeerList peers.PeerUpdate
+	PeerList.Peers = append(PeerList.Peers, "one", "two")
+
 	hraExecutable := ""
 	switch runtime.GOOS {
 	case "linux":
@@ -67,6 +71,7 @@ func main() {
 
 	//Using elevatorstate as input, HallRequests need to be replaced with MasterRequests
 	MasterStruct := types.HRAInput{
+		//Add peer list
 		HallRequests: [][2]bool{{false, false}, {false, false}, {false, false}, {false, false}},
 		States: map[string]elevator.Elevator{
 			"one": e1,
@@ -91,20 +96,16 @@ func main() {
 		fmt.Printf("%6v :  %+v\n", k, v)
 	}
 
-	fmt.Println(output)
-	AssignedRequests := output
-	fmt.Println(AssignedRequests)
-
 	slaveButtonRx := make(chan types.SlaveButtonEventMsg)
 	slaveFloorRx := make(chan types.SlaveFloor)
 	masterCommandMD := make(chan types.MasterCommand)
 	masterAckOrder := make(chan types.MasterAckOrderMsg)
 	//slaveAckOrderDoneRx := make(chan bool)
-	masterSetOrderLight := make(chan int)
+	masterSetOrderLight := make(chan types.SetOrderLight)
 	commandDoorOpen := make(chan types.DoorOpen)
 	slaveDoorOpened := make(chan types.DoorOpen)
 	NewEvent := make(chan types.HRAInput)
-	NewAction := make(chan requests.Action)
+	NewAction := make(chan types.NewAction)
 
 	go broadcast.Receiver(16513, slaveButtonRx)
 	go broadcast.Receiver(16514, slaveFloorRx)
@@ -116,7 +117,7 @@ func main() {
 	go broadcast.Transmitter(16518, masterSetOrderLight)
 	go broadcast.Transmitter(16520, commandDoorOpen)
 
-	go master.MasterGiveCommands(NewEvent, NewAction, commandDoorOpen, masterCommandMD)
+	go master.MasterGiveCommands(NewEvent, NewAction, commandDoorOpen, masterCommandMD, PeerList)
 
 	//doorTimer := time.NewTimer(20 * time.Second) //Trouble initializing timer like this, maybe
 
@@ -124,12 +125,17 @@ func main() {
 		select {
 		case slaveMsg := <-slaveButtonRx:
 			if slaveMsg.Btn_type == 2 {
-				e1.CabRequests[slaveMsg.Btn_floor] = true
+				if entry, ok := MasterStruct.States[slaveMsg.ID]; ok {
+					entry.CabRequests[slaveMsg.Btn_floor] = true
+					MasterStruct.States[slaveMsg.ID] = entry
+				}
+
 			} else {
 				MasterStruct.HallRequests[slaveMsg.Btn_floor][slaveMsg.Btn_type] = true
 			}
-			MasterStruct.States["one"] = e1 //fix
 			NewEvent <- MasterStruct
+			SetOrderLight := types.SetOrderLight{BtnFloor: slaveMsg.Btn_floor, BtnType: slaveMsg.Btn_type, LightOn: true}
+			masterSetOrderLight <- SetOrderLight
 
 		case slaveMsg := <-slaveFloorRx:
 			elevatorID := slaveMsg.ID
@@ -142,24 +148,45 @@ func main() {
 			NewEvent <- MasterStruct
 
 		case slaveMsg := <-slaveDoorOpened:
+			elevState := MasterStruct.States[slaveMsg.ID]
 			if slaveMsg.SetDoorOpen {
 				if entry, ok := MasterStruct.States[slaveMsg.ID]; ok {
 					entry.Behaviour = elevator.EB_DoorOpen
-				}
+					MasterStruct.States[slaveMsg.ID] = entry
 
-				elevState := MasterStruct.States[slaveMsg.ID]
+				}
+			} else {
 				MasterStruct.HallRequests[elevState.Floor][0] = false
 				MasterStruct.HallRequests[elevState.Floor][1] = false
+				if entry, ok := MasterStruct.States[slaveMsg.ID]; ok {
+					entry.CabRequests[elevState.Floor] = false
+					entry.Behaviour = elevator.EB_Idle
+					MasterStruct.States[slaveMsg.ID] = entry
+				}
+				SetOrderLight := types.SetOrderLight{BtnFloor: elevState.Floor, BtnType: 0, LightOn: false}
+				masterSetOrderLight <- SetOrderLight
 
-				NewEvent <- MasterStruct
-			} else {
-				NewEvent <- MasterStruct
+				SetOrderLight = types.SetOrderLight{BtnFloor: elevState.Floor, BtnType: 1, LightOn: false}
+				masterSetOrderLight <- SetOrderLight
+
+				SetOrderLight = types.SetOrderLight{BtnFloor: elevState.Floor, BtnType: 2, LightOn: false}
+				masterSetOrderLight <- SetOrderLight
 			}
+			NewEvent <- MasterStruct
+
 		case a := <-NewAction:
-			if entry, ok := MasterStruct.States["one"]; ok {
-				entry.Behaviour = a.Behaviour
-				entry.Dirn = elevio.MotorDirToString(a.Dirn)
-				MasterStruct.States["one"] = entry
+			if entry, ok := MasterStruct.States[a.ID]; ok {
+				entry.Behaviour = a.Action.Behaviour
+				entry.Dirn = elevio.MotorDirToString(a.Action.Dirn)
+				MasterStruct.States[a.ID] = entry
+			}
+			fmt.Println(MasterStruct.States[a.ID].Behaviour)
+			fmt.Println(MasterStruct.States[a.ID].Dirn)
+			if MasterStruct.States[a.ID].Behaviour == elevator.EB_DoorOpen {
+				commandDoorOpen <- types.DoorOpen{ID: a.ID, SetDoorOpen: true}
+				//init timer
+			} else {
+				masterCommandMD <- types.MasterCommand{ID: a.ID, Motordir: elevio.MotorDirToString(a.Action.Dirn)}
 			}
 
 		}
