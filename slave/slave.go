@@ -120,18 +120,23 @@ func main() {
 			}
 
 		case a := <-masterMotorDirRx: //Recieve direction from master
-			fmt.Println("Received dir")
+
 			if a.ID == MyID {
+				fmt.Println("Received dir")
+				fmt.Println(a.Motordir)
 				if !doorIsOpen {
+					fmt.Println("Door closed")
 					elevio.SetMotorDirection(elevio.StringToMotorDir(a.Motordir))
 				}
+				
 			}
 
-		case a := <-masterAckOrderRx:
-			elevio.SetButtonLamp(elevio.ButtonType(a.Btn_type), a.Btn_floor, true)
-
 		case a := <-masterSetOrderLight:
-			elevio.SetButtonLamp(elevio.ButtonType(a.BtnType), a.BtnFloor, a.LightOn)
+			elevio.SetButtonLamp(elevio.ButtonType(elevio.BT_HallUp), a.BtnFloor, a.LightOn[0])
+			elevio.SetButtonLamp(elevio.ButtonType(elevio.BT_HallDown), a.BtnFloor, a.LightOn[1])
+			if a.ID == MyID {
+				elevio.SetButtonLamp(elevio.ButtonType(elevio.BT_Cab), a.BtnFloor, a.LightOn[2])
+			}
 
 		case a := <-commandDoorOpen:
 			doorIsOpen = true

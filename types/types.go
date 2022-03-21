@@ -48,9 +48,9 @@ type HRAInput struct {
 }
 
 type SetOrderLight struct {
+	ID       string
 	BtnFloor int
-	BtnType  int
-	LightOn  bool
+	LightOn  [3]bool
 }
 
 type NewAction struct {

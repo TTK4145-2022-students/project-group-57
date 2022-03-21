@@ -26,6 +26,7 @@ import (
 	"master/master"
 	"master/network/broadcast"
 	"master/network/peers"
+	"master/requests"
 	"master/types"
 	"os/exec"
 	"runtime"
@@ -52,7 +53,7 @@ func main() {
 		e1 = fsm.Fsm_onInitBetweenFloors(e1)
 	}
 	if e2.Floor == -1 {
-		e1 = fsm.Fsm_onInitBetweenFloors(e2)
+		e2 = fsm.Fsm_onInitBetweenFloors(e2)
 	}
 
 	//PeerList := peers.PeerUpdate{Peers: "one", New: "", Lost: ""}
@@ -84,10 +85,10 @@ func main() {
 	jsonBytes, err := json.Marshal(input)
 	fmt.Println("json.Marshal error: ", err)
 
-	ret, err := exec.Command("hall_request_assigner/"+hraExecutable, "-i", string(jsonBytes)).Output()
+	ret, err := exec.Command("hall_request_assigner/"+hraExecutable, "-i", string(jsonBytes), "--includeCab").Output()
 	fmt.Println("exec.Command error: ", err)
 
-	output := new(map[string][][2]bool)
+	output := new(map[string][][3]bool)
 	err = json.Unmarshal(ret, &output)
 	fmt.Println("json.Unmarshal error: ", err)
 
@@ -99,7 +100,6 @@ func main() {
 	slaveButtonRx := make(chan types.SlaveButtonEventMsg)
 	slaveFloorRx := make(chan types.SlaveFloor)
 	masterCommandMD := make(chan types.MasterCommand)
-	masterAckOrder := make(chan types.MasterAckOrderMsg)
 	//slaveAckOrderDoneRx := make(chan bool)
 	masterSetOrderLight := make(chan types.SetOrderLight)
 	commandDoorOpen := make(chan types.DoorOpen)
@@ -113,10 +113,8 @@ func main() {
 	go broadcast.Receiver(16521, slaveDoorOpened)
 
 	go broadcast.Transmitter(16515, masterCommandMD)
-	go broadcast.Transmitter(16516, masterAckOrder)
 	go broadcast.Transmitter(16518, masterSetOrderLight)
 	go broadcast.Transmitter(16520, commandDoorOpen)
-
 	go master.MasterGiveCommands(NewEvent, NewAction, commandDoorOpen, masterCommandMD, PeerList)
 
 	//doorTimer := time.NewTimer(20 * time.Second) //Trouble initializing timer like this, maybe
@@ -134,7 +132,12 @@ func main() {
 				MasterStruct.HallRequests[slaveMsg.Btn_floor][slaveMsg.Btn_type] = true
 			}
 			NewEvent <- MasterStruct
-			SetOrderLight := types.SetOrderLight{BtnFloor: slaveMsg.Btn_floor, BtnType: slaveMsg.Btn_type, LightOn: true}
+			SetLightArray := [3]bool{
+				MasterStruct.HallRequests[slaveMsg.Btn_floor][elevio.BT_HallUp],
+				MasterStruct.HallRequests[slaveMsg.Btn_floor][elevio.BT_HallDown],
+				MasterStruct.States[slaveMsg.ID].CabRequests[slaveMsg.Btn_floor]}
+			SetLightArray[slaveMsg.Btn_type] = true
+			SetOrderLight := types.SetOrderLight{ID: slaveMsg.ID, BtnFloor: slaveMsg.Btn_floor, LightOn: SetLightArray}
 			masterSetOrderLight <- SetOrderLight
 
 		case slaveMsg := <-slaveFloorRx:
@@ -156,20 +159,19 @@ func main() {
 
 				}
 			} else {
-				MasterStruct.HallRequests[elevState.Floor][0] = false
-				MasterStruct.HallRequests[elevState.Floor][1] = false
 				if entry, ok := MasterStruct.States[slaveMsg.ID]; ok {
 					entry.CabRequests[elevState.Floor] = false
 					entry.Behaviour = elevator.EB_Idle
 					MasterStruct.States[slaveMsg.ID] = entry
 				}
-				SetOrderLight := types.SetOrderLight{BtnFloor: elevState.Floor, BtnType: 0, LightOn: false}
-				masterSetOrderLight <- SetOrderLight
 
-				SetOrderLight = types.SetOrderLight{BtnFloor: elevState.Floor, BtnType: 1, LightOn: false}
-				masterSetOrderLight <- SetOrderLight
+				ClearHallReqs := requests.ShouldClearHallRequest(elevState, MasterStruct.HallRequests)
+				fmt.Println()
+				MasterStruct.HallRequests[elevState.Floor][elevio.BT_HallUp] = ClearHallReqs[elevio.BT_HallUp]
+				MasterStruct.HallRequests[elevState.Floor][elevio.BT_HallDown] = ClearHallReqs[elevio.BT_HallDown]
 
-				SetOrderLight = types.SetOrderLight{BtnFloor: elevState.Floor, BtnType: 2, LightOn: false}
+				ClearLightArray := [3]bool{ClearHallReqs[elevio.BT_HallUp], ClearHallReqs[elevio.BT_HallDown], false}
+				SetOrderLight := types.SetOrderLight{ID: slaveMsg.ID, BtnFloor: elevState.Floor, LightOn: ClearLightArray}
 				masterSetOrderLight <- SetOrderLight
 			}
 			NewEvent <- MasterStruct

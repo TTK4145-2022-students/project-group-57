@@ -39,7 +39,7 @@ func MasterGiveCommands(NewEvent <-chan types.HRAInput, NewAction chan<- types.N
 			elevState := MasterStruct.States[peer]
 			ElevatorCabRequests := elevState.CabRequests
 			var action requests.Action
-			AllRequests := requests.RequestsAppendHallCab(ElevatorHallReqs, ElevatorCabRequests[:])
+			AllRequests := requests.RequestsAppendHallCab(ElevatorHallReqs, ElevatorCabRequests)
 			if elevState.Behaviour == elevator.EB_DoorOpen || elevState.Behaviour == elevator.EB_Idle {
 				action = requests.RequestsNextAction(elevState, AllRequests)
 			} else {
