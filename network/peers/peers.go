@@ -29,12 +29,13 @@ func Transmitter(port int, id string, transmitEnable <-chan bool) {
 		case <-time.After(interval):
 		}
 		if enable {
+			fmt.Println("Trying to transmit")
 			conn.WriteTo([]byte(id), addr)
 		}
 	}
 }
 
-func Receiver(port int, peerUpdateCh chan<- PeerUpdate) {
+func Receiver(port int, PeerUpdateCh chan<- PeerUpdate) {
 
 	var buf [1024]byte
 	var p PeerUpdate
@@ -81,7 +82,7 @@ func Receiver(port int, peerUpdateCh chan<- PeerUpdate) {
 
 			sort.Strings(p.Peers)
 			sort.Strings(p.Lost)
-			peerUpdateCh <- p
+			PeerUpdateCh <- p
 		}
 	}
 }

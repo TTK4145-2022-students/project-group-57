@@ -1,21 +1,9 @@
 package main
 
-//Slave executes its own cab requests
-
-//Fix logic in request-execution in master
-//Master assigns request, divides it in to the simplest steps, saves which elevator executes the request.
-
-//Message from slave to master -
-//Need to include: New buttonevents + new floor + iterator/versionnr
-//Alive message
-
-//Message from master to slave -
-//Need to include: New motor direction + open door + set lights
-
-//Master-message
-//Need to include: All relevant info + iterate/versionnr
-
-//Logic need to use MasterRequest and not ElevatorRequests
+//Problems:
+//HallUp and HallDown in current floor, Cab in diff floor after HallUp is executed, but before HallDown is executed
+//---- Elevator doesn't execute cab before HallDown
+//Concurrent map read and write
 
 import (
 	"encoding/json"
@@ -49,16 +37,25 @@ func main() {
 		Behaviour:   elevator.EB_Idle,
 		CabRequests: [elevio.NumFloors]bool{},
 	}
+	e3 := elevator.Elevator{
+		Floor:       1, //jalla
+		Dirn:        elevio.MotorDirToString(elevio.MD_Stop),
+		Behaviour:   elevator.EB_Idle,
+		CabRequests: [elevio.NumFloors]bool{},
+	}
 	if e1.Floor == -1 {
 		e1 = fsm.Fsm_onInitBetweenFloors(e1)
 	}
 	if e2.Floor == -1 {
 		e2 = fsm.Fsm_onInitBetweenFloors(e2)
 	}
+	if e3.Floor == -1 {
+		e3 = fsm.Fsm_onInitBetweenFloors(e3)
+	}
 
 	//PeerList := peers.PeerUpdate{Peers: "one", New: "", Lost: ""}
 	var PeerList peers.PeerUpdate
-	PeerList.Peers = append(PeerList.Peers, "one", "two")
+	PeerList.Peers = append(PeerList.Peers, "one", "two", "three")
 
 	hraExecutable := ""
 	switch runtime.GOOS {
@@ -75,8 +72,9 @@ func main() {
 		//Add peer list
 		HallRequests: [][2]bool{{false, false}, {false, false}, {false, false}, {false, false}},
 		States: map[string]elevator.Elevator{
-			"one": e1,
-			"two": e2,
+			"one":   e1,
+			"two":   e2,
+			"three": e3,
 		},
 	}
 
@@ -104,8 +102,9 @@ func main() {
 	masterSetOrderLight := make(chan types.SetOrderLight)
 	commandDoorOpen := make(chan types.DoorOpen)
 	slaveDoorOpened := make(chan types.DoorOpen)
-	NewEvent := make(chan types.HRAInput)
-	NewAction := make(chan types.NewAction)
+	NewEvent := make(chan types.HRAInput, 1) //Can only handle two button presses at the same time
+	NewAction := make(chan types.NewAction, 1)
+	PeerUpdateCh := make(chan peers.PeerUpdate)
 
 	go broadcast.Receiver(16513, slaveButtonRx)
 	go broadcast.Receiver(16514, slaveFloorRx)
@@ -119,8 +118,15 @@ func main() {
 
 	//doorTimer := time.NewTimer(20 * time.Second) //Trouble initializing timer like this, maybe
 
+	go peers.Receiver(16522, PeerUpdateCh)
+	var NewPeerList peers.PeerUpdate
 	for {
 		select {
+		case NewPeerList = <-PeerUpdateCh:
+			fmt.Println("Peers")
+			fmt.Println(NewPeerList.Peers)
+			fmt.Println("Lost")
+			fmt.Println(NewPeerList.Lost)
 		case slaveMsg := <-slaveButtonRx:
 			if slaveMsg.Btn_type == 2 {
 				if entry, ok := MasterStruct.States[slaveMsg.ID]; ok {
@@ -131,13 +137,14 @@ func main() {
 			} else {
 				MasterStruct.HallRequests[slaveMsg.Btn_floor][slaveMsg.Btn_type] = true
 			}
-			NewEvent <- MasterStruct
 			SetLightArray := [3]bool{
 				MasterStruct.HallRequests[slaveMsg.Btn_floor][elevio.BT_HallUp],
 				MasterStruct.HallRequests[slaveMsg.Btn_floor][elevio.BT_HallDown],
 				MasterStruct.States[slaveMsg.ID].CabRequests[slaveMsg.Btn_floor]}
 			SetLightArray[slaveMsg.Btn_type] = true
 			SetOrderLight := types.SetOrderLight{ID: slaveMsg.ID, BtnFloor: slaveMsg.Btn_floor, LightOn: SetLightArray}
+
+			NewEvent <- MasterStruct
 			masterSetOrderLight <- SetOrderLight
 
 		case slaveMsg := <-slaveFloorRx:

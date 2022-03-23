@@ -3,7 +3,7 @@ package broadcast
 import (
 	"encoding/json"
 	"fmt"
-	"master/network/connection"
+	conn "master/network/connection"
 	"net"
 	"reflect"
 )

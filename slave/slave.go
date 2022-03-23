@@ -6,6 +6,8 @@ import (
 	"master/elevator"
 	"master/fsm"
 	"master/network/broadcast"
+	"master/network/localip"
+	"master/network/peers"
 	"master/types"
 	"time"
 )
@@ -31,6 +33,9 @@ func main() {
 
 	fsm.SetAllLights(e1)
 
+	MyIP, _ := localip.LocalIP()
+	fmt.Println(MyIP)
+
 	//fsm.SetAllLights(e)
 	/*for floor := 0; floor < elevio.NumFloors; floor++ {
 		for btn := 0; btn < elevio.NumButtonTypes; btn++ {
@@ -50,6 +55,9 @@ func main() {
 	masterAckOrderRx := make(chan types.MasterAckOrderMsg) // burde lage en struct med button_type og floor
 	masterSetOrderLight := make(chan types.SetOrderLight)
 	slaveDoorOpened := make(chan types.DoorOpen)
+	transmitEnable := make(chan bool)
+
+	go peers.Transmitter(16522, MyID, transmitEnable)
 
 	//obstructionActive := false
 
@@ -101,6 +109,7 @@ func main() {
 
 		case a := <-drv_obstr:
 			fmt.Printf("%+v\n", a)
+			transmitEnable <- !a
 			/*if a {
 				obstructionActive = true
 			} else {
