@@ -124,11 +124,12 @@ func main() {
 			if a.ID == MyID {
 				fmt.Println("Received dir")
 				fmt.Println(a.Motordir)
+				fmt.Println(doorIsOpen)
 				if !doorIsOpen {
 					fmt.Println("Door closed")
 					elevio.SetMotorDirection(elevio.StringToMotorDir(a.Motordir))
 				}
-				
+
 			}
 
 		case a := <-masterSetOrderLight:
@@ -139,10 +140,10 @@ func main() {
 			}
 
 		case a := <-commandDoorOpen:
-			doorIsOpen = true
-			if a.ID == MyID {
+			if a.ID == MyID && !doorIsOpen {
 				elevio.SetDoorOpenLamp(a.SetDoorOpen)
 				if a.SetDoorOpen {
+					doorIsOpen = true
 					doorTimer.Stop()
 					doorTimer.Reset(3 * time.Second)
 				}

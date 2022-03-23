@@ -96,9 +96,9 @@ func RequestShouldStop(e elevator.Elevator, reqs [elevio.NumFloors][elevio.NumBu
 	case "up":
 		return reqs[e.Floor][elevio.BT_HallUp] || reqs[e.Floor][elevio.BT_Cab] || !RequestsAbove(e, reqs)
 	case "stop":
-		return true
+		return false
 	default:
-		return true
+		return false
 	}
 }
 

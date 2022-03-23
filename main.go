@@ -115,7 +115,7 @@ func main() {
 	go broadcast.Transmitter(16515, masterCommandMD)
 	go broadcast.Transmitter(16518, masterSetOrderLight)
 	go broadcast.Transmitter(16520, commandDoorOpen)
-	go master.MasterGiveCommands(NewEvent, NewAction, commandDoorOpen, masterCommandMD, PeerList)
+	go master.MasterFindNextAction(NewEvent, NewAction, commandDoorOpen, masterCommandMD, PeerList)
 
 	//doorTimer := time.NewTimer(20 * time.Second) //Trouble initializing timer like this, maybe
 
@@ -146,6 +146,7 @@ func main() {
 
 			if entry, ok := MasterStruct.States[elevatorID]; ok {
 				entry.Floor = elevatorFloor
+				entry.Behaviour = elevator.EB_Idle
 				MasterStruct.States[elevatorID] = entry
 			}
 			NewEvent <- MasterStruct
@@ -155,15 +156,10 @@ func main() {
 			if slaveMsg.SetDoorOpen {
 				if entry, ok := MasterStruct.States[slaveMsg.ID]; ok {
 					entry.Behaviour = elevator.EB_DoorOpen
-					MasterStruct.States[slaveMsg.ID] = entry
-
-				}
-			} else {
-				if entry, ok := MasterStruct.States[slaveMsg.ID]; ok {
 					entry.CabRequests[elevState.Floor] = false
-					entry.Behaviour = elevator.EB_Idle
 					MasterStruct.States[slaveMsg.ID] = entry
 				}
+				elevState = MasterStruct.States[slaveMsg.ID]
 
 				ClearHallReqs := requests.ShouldClearHallRequest(elevState, MasterStruct.HallRequests)
 				fmt.Println()
@@ -182,162 +178,15 @@ func main() {
 				entry.Dirn = elevio.MotorDirToString(a.Action.Dirn)
 				MasterStruct.States[a.ID] = entry
 			}
+			fmt.Println(a.ID)
 			fmt.Println(MasterStruct.States[a.ID].Behaviour)
 			fmt.Println(MasterStruct.States[a.ID].Dirn)
 			if MasterStruct.States[a.ID].Behaviour == elevator.EB_DoorOpen {
 				commandDoorOpen <- types.DoorOpen{ID: a.ID, SetDoorOpen: true}
-				//init timer
 			} else {
 				masterCommandMD <- types.MasterCommand{ID: a.ID, Motordir: elevio.MotorDirToString(a.Action.Dirn)}
 			}
 
 		}
 	}
-
-	/*for {
-			select {
-			case slaveMsg := <-slaveButtonRx:
-				if slaveMsg.Btn_type == 2 {
-					e1.CabRequests[slaveMsg.Btn_floor] = true
-				} else {
-					MasterStruct.HallRequests[slaveMsg.Btn_floor][slaveMsg.Btn_type] = true
-				}
-				MasterStruct.States["one"] = e1
-
-				/*if e1.Behaviour == "idle" {
-					fmt.Println("inside if")
-					nextAction := requests.RequestsNextAction(e1, MasterHallRequests)
-					e1.Behaviour = nextAction.Behaviour
-					e1.Dirn = elevio.MotorDirToString(nextAction.Dirn)
-					fmt.Println(e1.Behaviour)
-					fmt.Println(e1.Dirn)
-					masterCommandMD <- e1.Dirn
-				}
-
-				masterAckOrder <- types.MasterAckOrderMsg{int(slaveMsg.Btn_floor), slaveMsg.Btn_type}
-
-			case slaveMsg := <-slaveFloorRx:
-				//send to correct ID
-				elevatorID := slaveMsg.ID
-				elevatorFloor := slaveMsg.NewFloor
-
-				if entry, ok := MasterStruct.States[elevatorID]; ok {
-					entry.Floor = elevatorFloor
-					MasterStruct.States[elevatorID] = entry
-				}
-
-				input := MasterStruct
-				fmt.Println(input)
-
-				jsonBytes, err := json.Marshal(input)
-				fmt.Println("json.Marshal error: ", err)
-
-				ret, err := exec.Command("hall_request_assigner/"+hraExecutable, "-i", string(jsonBytes)).Output()
-				fmt.Println("exec.Command error: ", err)
-
-				err = json.Unmarshal(ret, &output)
-				fmt.Println("json.Unmarshal error: ", err)
-
-				fmt.Printf("output: \n")
-				for k, v := range *output {
-					fmt.Printf("%6v :  %+v\n", k, v)
-
-				}
-
-				ElevatorHallReqs := (*output)[elevatorID]
-				fmt.Println(ElevatorHallReqs)
-				elevState := MasterStruct.States[slaveMsg.ID]
-
-				a := requests.RequestsNextAction(elevState, ElevatorHallReqs)
-				if entry, ok := MasterStruct.States[elevatorID]; ok {
-					entry.Behaviour = a.Behaviour
-					entry.Dirn = elevio.MotorDirToString(a.Dirn)
-					MasterStruct.States[elevatorID] = entry
-				}
-
-				if MasterStruct.States[elevatorID].Behaviour == elevator.EB_DoorOpen {
-					commandDoorOpen <- types.DoorOpen{elevatorID, true}
-				} else {
-					masterCommandMD <- types.MasterCommand{elevatorID, elevio.MotorDirToString(a.Dirn)}
-				}
-
-			case slaveMsg := <-slaveDoorOpened:
-				if slaveMsg.SetDoorOpen {
-					if entry, ok := MasterStruct.States[slaveMsg.ID]; ok {
-						entry.Behaviour = elevator.EB_DoorOpen
-					}
-
-					elevState := MasterStruct.States[slaveMsg.ID]
-					MasterStruct.HallRequests[elevState.Floor][0] = false
-					MasterStruct.HallRequests[elevState.Floor][1] = false
-
-					masterSetOrderLight <- elevState.Floor
-					doorTimer.Stop()
-					doorTimer.Reset(3 * time.Second)
-				} else {
-
-					input := MasterStruct
-
-					fmt.Println(input)
-
-					jsonBytes, err := json.Marshal(input)
-					fmt.Println("json.Marshal error: ", err)
-
-					ret, err := exec.Command("hall_request_assigner/"+hraExecutable, "-i", string(jsonBytes)).Output()
-					fmt.Println("exec.Command error: ", err)
-
-					output = new(map[string][][2]bool)
-					err = json.Unmarshal(ret, &output)
-					fmt.Println("json.Unmarshal error: ", err)
-
-					fmt.Printf("output: \n")
-					for k, v := range *output {
-						fmt.Printf("%6v :  %+v\n", k, v)
-
-					}
-
-					ElevatorHallReqs := (*output)[slaveMsg.ID]
-					elevState := MasterStruct.States[slaveMsg.ID]
-
-					a := requests.RequestsNextAction(elevState, ElevatorHallReqs)
-					if entry, ok := MasterStruct.States[slaveMsg.ID]; ok {
-						entry.Behaviour = a.Behaviour
-						entry.Dirn = elevio.MotorDirToString(a.Dirn)
-						MasterStruct.States[slaveMsg.ID] = entry
-					}
-
-					switch elevState.Behaviour {
-					case elevator.EB_DoorOpen:
-						elevState, MasterStruct.HallRequests = requests.ClearRequestCurrentFloor(elevState, ElevatorHallReqs)
-						masterSetOrderLight <- e1.Floor
-					case elevator.EB_Moving:
-						masterCommandMD <- types.MasterCommand{slaveMsg.ID, elevio.MotorDirToString(a.Dirn)}
-					case elevator.EB_Idle:
-						masterCommandMD <- types.MasterCommand{slaveMsg.ID, elevio.MotorDirToString(a.Dirn)}
-					}
-				}
-			case <-doorTimer.C:
-				commandDoorOpen <- types.DoorOpen{"one", false}
-				commandDoorOpen <- types.DoorOpen{"two", false}
-
-				if entry, ok := MasterStruct.States["one"]; ok {
-					entry.Behaviour = elevator.EB_Idle
-					MasterStruct.States["one"] = entry
-				}
-
-				if entry, ok := MasterStruct.States["two"]; ok {
-					entry.Behaviour = elevator.EB_Idle
-					MasterStruct.States["two"] = entry
-				}
-			}
-		}
-
-	}
-	*/
-	//Reassigning orders at each new action/event?
-	//How to request next action based on which elevator?:
-	//Each channel includes which elevator it comes from?
-	//-cons many channels (maybe necessary?)
-	//Not sending MasterRequests as input to request-funcs
-	//Send rather corresponding request-array from hra-output
 }
