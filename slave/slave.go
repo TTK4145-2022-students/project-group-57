@@ -3,8 +3,6 @@ package main
 import (
 	"fmt"
 	"master/Driver-go/elevio"
-	"master/elevator"
-	"master/fsm"
 	"master/network/broadcast"
 	"master/network/localip"
 	"master/network/peers"
@@ -20,18 +18,18 @@ func main() {
 	elevio.Init("localhost:15659", numFloors)
 	MyID := "one"
 
-	e1 := elevator.Elevator{
-		Behaviour:   elevator.EB_Idle,
+	/*e1 := elevator.Elevator{
 		Floor:       elevio.GetFloor(),
 		Dirn:        elevio.MotorDirToString(elevio.MD_Stop),
+		Behaviour:   elevator.EB_Idle,
 		CabRequests: [elevio.NumFloors]bool{},
-	}
+	}*/
 
 	if elevio.GetFloor() == -1 {
 		elevio.SetMotorDirection(elevio.MD_Down)
 	}
 
-	fsm.SetAllLights(e1)
+	//fsm.SetAllLights(e1)
 
 	MyIP, _ := localip.LocalIP()
 	fmt.Println(MyIP)

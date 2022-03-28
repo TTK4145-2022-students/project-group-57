@@ -55,7 +55,9 @@ func main() {
 
 	//PeerList := peers.PeerUpdate{Peers: "one", New: "", Lost: ""}
 	var PeerList peers.PeerUpdate
-	PeerList.Peers = append(PeerList.Peers, "one", "two", "three")
+	//PeerList.Peers = append(PeerList.Peers, "one", "two", "three")
+	PeerList.Peers = append(PeerList.Peers, "one")
+	var NewPeerList peers.PeerUpdate
 
 	hraExecutable := ""
 	switch runtime.GOOS {
@@ -67,15 +69,22 @@ func main() {
 		panic("OS not supported")
 	}
 
-	//Using elevatorstate as input, HallRequests need to be replaced with MasterRequests
+	/*
+		MasterStruct := types.HRAInput{
+			//Add peer list
+			HallRequests: [][2]bool{{false, false}, {false, false}, {false, false}, {false, false}},
+			States: map[string]elevator.Elevator{
+				"one":   e1,
+				"two":   e2,
+				"three": e3,
+			},
+		}
+	*/
+
 	MasterStruct := types.HRAInput{
 		//Add peer list
 		HallRequests: [][2]bool{{false, false}, {false, false}, {false, false}, {false, false}},
-		States: map[string]elevator.Elevator{
-			"one":   e1,
-			"two":   e2,
-			"three": e3,
-		},
+		States:       map[string]elevator.Elevator{},
 	}
 
 	input := MasterStruct
@@ -105,6 +114,7 @@ func main() {
 	NewEvent := make(chan types.HRAInput, 1) //Can only handle two button presses at the same time
 	NewAction := make(chan types.NewAction, 1)
 	PeerUpdateCh := make(chan peers.PeerUpdate)
+	NewPeerListCh := make(chan peers.PeerUpdate)
 
 	go broadcast.Receiver(16513, slaveButtonRx)
 	go broadcast.Receiver(16514, slaveFloorRx)
@@ -114,12 +124,12 @@ func main() {
 	go broadcast.Transmitter(16515, masterCommandMD)
 	go broadcast.Transmitter(16518, masterSetOrderLight)
 	go broadcast.Transmitter(16520, commandDoorOpen)
-	go master.MasterFindNextAction(NewEvent, NewAction, commandDoorOpen, masterCommandMD, PeerList)
+	go master.MasterFindNextAction(NewEvent, NewAction, commandDoorOpen, masterCommandMD, NewPeerListCh)
 
 	//doorTimer := time.NewTimer(20 * time.Second) //Trouble initializing timer like this, maybe
 
 	go peers.Receiver(16522, PeerUpdateCh)
-	var NewPeerList peers.PeerUpdate
+
 	for {
 		select {
 		case NewPeerList = <-PeerUpdateCh:
@@ -127,6 +137,19 @@ func main() {
 			fmt.Println(NewPeerList.Peers)
 			fmt.Println("Lost")
 			fmt.Println(NewPeerList.Lost)
+			fmt.Println("New")
+			fmt.Println(NewPeerList.New)
+			for j := range NewPeerList.New {
+				fmt.Println(j)
+				var e elevator.Elevator
+				e = fsm.UnInitializedElevator(e)
+				MasterStruct.States[NewPeerList.New] = e //Fix here
+			}
+			for k := range NewPeerList.Lost {
+				delete(MasterStruct.States, NewPeerList.Lost[k])
+			}
+			fmt.Println(MasterStruct.States)
+
 		case slaveMsg := <-slaveButtonRx:
 			if slaveMsg.Btn_type == 2 {
 				if entry, ok := MasterStruct.States[slaveMsg.ID]; ok {
@@ -146,6 +169,7 @@ func main() {
 
 			NewEvent <- MasterStruct
 			masterSetOrderLight <- SetOrderLight
+			NewPeerListCh <- NewPeerList
 
 		case slaveMsg := <-slaveFloorRx:
 			elevatorID := slaveMsg.ID
@@ -157,6 +181,7 @@ func main() {
 				MasterStruct.States[elevatorID] = entry
 			}
 			NewEvent <- MasterStruct
+			NewPeerListCh <- NewPeerList
 
 		case slaveMsg := <-slaveDoorOpened:
 			elevState := MasterStruct.States[slaveMsg.ID]
@@ -178,6 +203,7 @@ func main() {
 				masterSetOrderLight <- SetOrderLight
 			}
 			NewEvent <- MasterStruct
+			NewPeerListCh <- NewPeerList
 
 		case a := <-NewAction:
 			if entry, ok := MasterStruct.States[a.ID]; ok {

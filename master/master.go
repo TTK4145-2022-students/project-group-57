@@ -12,11 +12,12 @@ import (
 )
 
 //Finds next action
-func MasterFindNextAction(NewEvent <-chan types.HRAInput, NewAction chan<- types.NewAction, commandDoorOpen chan<- types.DoorOpen, masterCommandMD chan<- types.MasterCommand, PeerList peers.PeerUpdate) {
+func MasterFindNextAction(NewEvent <-chan types.HRAInput, NewAction chan<- types.NewAction, commandDoorOpen chan<- types.DoorOpen, masterCommandMD chan<- types.MasterCommand, NewPeerListCh <-chan peers.PeerUpdate) {
 	hraExecutable := "hall_request_assigner"
 	output := new(map[string][][2]bool)
 	for {
 		MasterStruct := <-NewEvent
+		NewPeerList := <-NewPeerListCh
 
 		elevBehav1 := MasterStruct.States["one"].Behaviour
 
@@ -48,16 +49,14 @@ func MasterFindNextAction(NewEvent <-chan types.HRAInput, NewAction chan<- types
 
 		}
 
-		for _, peer := range PeerList.Peers {
+		for _, peer := range NewPeerList.Peers {
 			ElevatorHallReqs := (*output)[peer]
 			elevState := MasterStruct.States[peer]
-			fmt.Println(elevState.Behaviour)
 			ElevatorCabRequests := elevState.CabRequests
 			var action requests.Action
 			AllRequests := requests.RequestsAppendHallCab(ElevatorHallReqs, ElevatorCabRequests)
 
 			if requests.RequestShouldStop(elevState, AllRequests) && elevState.Behaviour != "moving" {
-				fmt.Println(peer)
 				fmt.Println("Should stop")
 				fmt.Println(elevState.Floor)
 				if requests.RequestsHere(elevState, AllRequests) {
@@ -67,7 +66,6 @@ func MasterFindNextAction(NewEvent <-chan types.HRAInput, NewAction chan<- types
 				}
 			} else {
 				if elevState.Behaviour == elevator.EB_Moving {
-					fmt.Println(peer)
 					fmt.Println("Keeping dir")
 					action = requests.Action{Dirn: elevio.StringToMotorDir(elevState.Dirn), Behaviour: elevState.Behaviour}
 				} else {

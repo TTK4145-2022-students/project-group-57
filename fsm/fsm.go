@@ -22,3 +22,12 @@ func Fsm_onInitBetweenFloors(e elevator.Elevator) elevator.Elevator {
 	e.Behaviour = elevator.EB_Moving
 	return e
 }
+
+func UnInitializedElevator(e elevator.Elevator) elevator.Elevator {
+	e.Floor = 0
+	e.Dirn = "stop"
+	e.Behaviour = "idle"
+	e.CabRequests = [elevio.NumFloors]bool{}
+	return e
+
+}

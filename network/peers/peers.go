@@ -29,7 +29,7 @@ func Transmitter(port int, id string, transmitEnable <-chan bool) {
 		case <-time.After(interval):
 		}
 		if enable {
-			fmt.Println("Trying to transmit")
+			//fmt.Println("Trying to transmit")
 			conn.WriteTo([]byte(id), addr)
 		}
 	}
