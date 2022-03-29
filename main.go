@@ -18,6 +18,7 @@ import (
 	"master/types"
 	"os/exec"
 	"runtime"
+	"time"
 )
 
 var e1 elevator.Elevator
@@ -88,6 +89,7 @@ func main() {
 	}
 
 	input := MasterStruct
+	const interval = 500 * time.Millisecond
 
 	jsonBytes, err := json.Marshal(input)
 	fmt.Println("json.Marshal error: ", err)
@@ -115,6 +117,7 @@ func main() {
 	NewAction := make(chan types.NewAction, 1)
 	PeerUpdateCh := make(chan peers.PeerUpdate)
 	NewPeerListCh := make(chan peers.PeerUpdate)
+	MasterMsg := make(chan types.HRAInput, 3)
 
 	go broadcast.Receiver(16513, slaveButtonRx)
 	go broadcast.Receiver(16514, slaveFloorRx)
@@ -124,14 +127,18 @@ func main() {
 	go broadcast.Transmitter(16515, masterCommandMD)
 	go broadcast.Transmitter(16518, masterSetOrderLight)
 	go broadcast.Transmitter(16520, commandDoorOpen)
-	go master.MasterFindNextAction(NewEvent, NewAction, commandDoorOpen, masterCommandMD, NewPeerListCh)
-
+	go master.MasterFindNextAction(NewEvent, NewAction, commandDoorOpen, masterCommandMD, NewPeerListCh, MasterMsg)
+	go broadcast.TransmitMasterMsg(16523, MasterMsg)
 	//doorTimer := time.NewTimer(20 * time.Second) //Trouble initializing timer like this, maybe
 
 	go peers.Receiver(16522, PeerUpdateCh)
 
 	for {
 		select {
+		case <-time.After(interval):
+			MasterMsg <- MasterStruct
+			//Sending periodically to slaves
+
 		case NewPeerList = <-PeerUpdateCh:
 			fmt.Println("Peers")
 			fmt.Println(NewPeerList.Peers)

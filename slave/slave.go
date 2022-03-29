@@ -54,6 +54,7 @@ func main() {
 	masterSetOrderLight := make(chan types.SetOrderLight)
 	slaveDoorOpened := make(chan types.DoorOpen)
 	transmitEnable := make(chan bool)
+	MasterMsg := make(chan types.HRAInput)
 
 	go peers.Transmitter(16522, MyID, transmitEnable)
 
@@ -72,12 +73,25 @@ func main() {
 	go broadcast.Receiver(16516, masterAckOrderRx)
 	go broadcast.Receiver(16518, masterSetOrderLight)
 	go broadcast.Receiver(16520, commandDoorOpen)
+	go broadcast.Receiver(16523, MasterMsg)
 
 	doorTimer := time.NewTimer(100 * time.Second) //Trouble initializing timer like this, maybe
 	doorIsOpen := false
-
+	var MasterStruct types.HRAInput
+	MasterTimer := time.NewTimer(10 * time.Second)
 	for {
 		select {
+		case a := <-MasterMsg:
+			MasterStruct = a
+			fmt.Println(MasterStruct)
+			MasterTimer.Stop()
+			MasterTimer.Reset(10 * time.Second)
+
+		case <-MasterTimer.C:
+			fmt.Println("Master is dead")
+			fmt.Println("Last received message:")
+			fmt.Println(MasterStruct)
+
 		case a := <-drv_buttons:
 			buttonEvent := types.SlaveButtonEventMsg{
 				ID:        MyID,

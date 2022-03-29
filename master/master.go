@@ -12,7 +12,13 @@ import (
 )
 
 //Finds next action
-func MasterFindNextAction(NewEvent <-chan types.HRAInput, NewAction chan<- types.NewAction, commandDoorOpen chan<- types.DoorOpen, masterCommandMD chan<- types.MasterCommand, NewPeerListCh <-chan peers.PeerUpdate) {
+func MasterFindNextAction(
+	NewEvent <-chan types.HRAInput,
+	NewAction chan<- types.NewAction,
+	commandDoorOpen chan<- types.DoorOpen,
+	masterCommandMD chan<- types.MasterCommand,
+	NewPeerListCh <-chan peers.PeerUpdate,
+	MasterMsg chan<- types.HRAInput) {
 	hraExecutable := "hall_request_assigner"
 	output := new(map[string][][2]bool)
 	for {

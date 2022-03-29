@@ -6,7 +6,11 @@ import (
 	conn "master/network/connection"
 	"net"
 	"reflect"
+	"time"
 )
+
+const interval = 15 * time.Millisecond
+const timeout = 500 * time.Millisecond
 
 // Encodes received values from `chans` into type-tagged JSON, then broadcasts
 // it on `port`
@@ -132,5 +136,31 @@ func checkTypeRecursive(val reflect.Type, offsets []int) {
 		for idx := 0; idx < val.NumField(); idx++ {
 			checkTypeRecursive(val.Field(idx).Type, append(offsets, idx+1))
 		}
+	}
+}
+
+func TransmitMasterMsg(port int, chans ...interface{}) {
+	checkArgs(chans...)
+	typeNames := make([]string, len(chans))
+	selectCases := make([]reflect.SelectCase, len(typeNames))
+	for i, ch := range chans {
+		selectCases[i] = reflect.SelectCase{
+			Dir:  reflect.SelectRecv,
+			Chan: reflect.ValueOf(ch),
+		}
+		typeNames[i] = reflect.TypeOf(ch).Elem().String()
+	}
+
+	conn := conn.DialBroadcastUDP(port)
+	addr, _ := net.ResolveUDPAddr("udp4", fmt.Sprintf("255.255.255.255:%d", port))
+	for {
+		fmt.Println("MasterMsg")
+		chosen, value, _ := reflect.Select(selectCases)
+		jsonstr, _ := json.Marshal(value.Interface())
+		ttj, _ := json.Marshal(typeTaggedJSON{
+			TypeId: typeNames[chosen],
+			JSON:   jsonstr,
+		})
+		conn.WriteTo(ttj, addr)
 	}
 }
