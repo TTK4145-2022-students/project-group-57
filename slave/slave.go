@@ -1,12 +1,15 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"master/Driver-go/elevio"
 	"master/network/broadcast"
 	"master/network/localip"
 	"master/network/peers"
 	"master/types"
+	"os"
+	"os/exec"
 	"time"
 )
 
@@ -15,7 +18,7 @@ import (
 func main() {
 
 	numFloors := 4
-	elevio.Init("localhost:15659", numFloors)
+	elevio.Init("localhost:15660", numFloors)
 	MyID := "one"
 
 	/*e1 := elevator.Elevator{
@@ -34,6 +37,24 @@ func main() {
 	MyIP, _ := localip.LocalIP()
 	fmt.Println(MyIP)
 
+	var id string
+	flag.StringVar(&id, "id", "", "id of this peer")
+	flag.Parse()
+
+	id = ""
+	// ... or alternatively, we can use the local IP address.
+	// (But since we can run multiple programs on the same PC, we also append the
+	//  process ID)
+	if id == "" {
+		localIP, err := localip.LocalIP()
+		if err != nil {
+			fmt.Println(err)
+			localIP = "DISCONNECTED"
+		}
+		id = fmt.Sprintf("peer-%s-%d", localIP, os.Getpid())
+		fmt.Println(id)
+	}
+
 	//fsm.SetAllLights(e)
 	/*for floor := 0; floor < elevio.NumFloors; floor++ {
 		for btn := 0; btn < elevio.NumButtonTypes; btn++ {
@@ -48,13 +69,14 @@ func main() {
 
 	commandDoorOpen := make(chan types.DoorOpen)
 	slaveButtonTx := make(chan types.SlaveButtonEventMsg)
-	slaveFloorTx := make(chan types.SlaveFloor)
+	slaveFloorTx := make(chan types.SlaveFloor, 5)
 	masterMotorDirRx := make(chan types.MasterCommand)
 	masterAckOrderRx := make(chan types.MasterAckOrderMsg) // burde lage en struct med button_type og floor
 	masterSetOrderLight := make(chan types.SetOrderLight)
 	slaveDoorOpened := make(chan types.DoorOpen)
 	transmitEnable := make(chan bool)
-	MasterMsg := make(chan types.HRAInput)
+	MasterMsg := make(chan types.MasterStruct)
+	MasterInitStruct := make(chan types.MasterStruct)
 
 	go peers.Transmitter(16522, MyID, transmitEnable)
 
@@ -68,6 +90,7 @@ func main() {
 	go broadcast.Transmitter(16513, slaveButtonTx)
 	go broadcast.Transmitter(16514, slaveFloorTx)
 	go broadcast.Transmitter(16521, slaveDoorOpened)
+	go broadcast.Transmitter(16524, MasterInitStruct)
 
 	go broadcast.Receiver(16515, masterMotorDirRx)
 	go broadcast.Receiver(16516, masterAckOrderRx)
@@ -77,20 +100,44 @@ func main() {
 
 	doorTimer := time.NewTimer(100 * time.Second) //Trouble initializing timer like this, maybe
 	doorIsOpen := false
-	var MasterStruct types.HRAInput
-	MasterTimer := time.NewTimer(10 * time.Second)
+	var MasterStruct types.MasterStruct
+	MasterTimeout := 3 * time.Second
+	MasterTimer := time.NewTimer(MasterTimeout)
 	for {
 		select {
 		case a := <-MasterMsg:
 			MasterStruct = a
 			fmt.Println(MasterStruct)
 			MasterTimer.Stop()
-			MasterTimer.Reset(10 * time.Second)
+			MasterTimer.Reset(MasterTimeout)
 
 		case <-MasterTimer.C:
 			fmt.Println("Master is dead")
 			fmt.Println("Last received message:")
 			fmt.Println(MasterStruct)
+			if MasterStruct.PeerList.Peers == nil {
+				err := exec.Command("gnome-terminal", "--", "go", "run", "../main.go").Run()
+				fmt.Println(err)
+				go func(MasterStruct types.MasterStruct) {
+					for i := 0; i < 10; i++ {
+						MasterInitStruct <- MasterStruct
+						time.Sleep(100 * time.Millisecond)
+					}
+				}(MasterStruct)
+			} else if MasterStruct.PeerList.Peers[0] == MyID {
+				err := exec.Command("gnome-terminal", "--", "go", "run", "../main.go").Run()
+				fmt.Println(err)
+				go func(MasterStruct types.MasterStruct) {
+					for i := 0; i < 10; i++ {
+						MasterInitStruct <- MasterStruct
+						time.Sleep(100 * time.Millisecond)
+					}
+				}(MasterStruct)
+			} else {
+				MasterTimer.Stop()
+				MasterTimer.Reset(MasterTimeout)
+
+			}
 
 		case a := <-drv_buttons:
 			buttonEvent := types.SlaveButtonEventMsg{
@@ -143,12 +190,20 @@ func main() {
 		case a := <-masterMotorDirRx: //Recieve direction from master
 
 			if a.ID == MyID {
-				fmt.Println("Received dir")
-				fmt.Println(a.Motordir)
-				fmt.Println(doorIsOpen)
-				if !doorIsOpen {
-					fmt.Println("Door closed")
-					elevio.SetMotorDirection(elevio.StringToMotorDir(a.Motordir))
+				floor := elevio.GetFloor()
+				if (floor == elevio.NumFloors-1 && a.Motordir == "up") ||
+					(floor == 0 && a.Motordir == "down") {
+					fmt.Println("Top or bottom floor")
+					floorEvent := types.SlaveFloor{ID: MyID, NewFloor: floor}
+					slaveFloorTx <- floorEvent
+				} else {
+					fmt.Println("Received dir")
+					fmt.Println(a.Motordir)
+					fmt.Println(doorIsOpen)
+					if !doorIsOpen {
+						fmt.Println("Door closed")
+						elevio.SetMotorDirection(elevio.StringToMotorDir(a.Motordir))
+					}
 				}
 
 			}
@@ -161,7 +216,7 @@ func main() {
 			}
 
 		case a := <-commandDoorOpen:
-			if a.ID == MyID && !doorIsOpen {
+			if a.ID == MyID && !doorIsOpen && elevio.GetFloor() != -1 {
 				elevio.SetDoorOpenLamp(a.SetDoorOpen)
 				if a.SetDoorOpen {
 					doorIsOpen = true

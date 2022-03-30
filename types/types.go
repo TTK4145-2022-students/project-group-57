@@ -2,6 +2,7 @@ package types
 
 import (
 	"master/elevator"
+	"master/network/peers"
 	"master/requests"
 )
 
@@ -56,4 +57,10 @@ type SetOrderLight struct {
 type NewAction struct {
 	ID     string
 	Action requests.Action
+}
+
+type MasterStruct struct {
+	Ready    bool
+	PeerList peers.PeerUpdate
+	HRAInput HRAInput
 }

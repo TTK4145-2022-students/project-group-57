@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"master/Driver-go/elevio"
 	"master/elevator"
-	"master/network/peers"
 	"master/requests"
 	"master/types"
 	"os/exec"
@@ -13,37 +12,25 @@ import (
 
 //Finds next action
 func MasterFindNextAction(
-	NewEvent <-chan types.HRAInput,
+	NewEvent <-chan types.MasterStruct,
 	NewAction chan<- types.NewAction,
 	commandDoorOpen chan<- types.DoorOpen,
-	masterCommandMD chan<- types.MasterCommand,
-	NewPeerListCh <-chan peers.PeerUpdate,
-	MasterMsg chan<- types.HRAInput) {
+	masterCommandMD chan<- types.MasterCommand) {
 	hraExecutable := "hall_request_assigner"
 	output := new(map[string][][2]bool)
 	for {
+		fmt.Println("Waiting for input")
 		MasterStruct := <-NewEvent
-		NewPeerList := <-NewPeerListCh
+		HRAInput := MasterStruct.HRAInput
+		fmt.Println("Waiting for peers")
 
-		elevBehav1 := MasterStruct.States["one"].Behaviour
-
-		elevDirn1 := MasterStruct.States["one"].Dirn
-
-		elevFloor1 := MasterStruct.States["one"].Floor
-
-		fmt.Println("")
-		fmt.Println("")
-		fmt.Println("")
-		fmt.Println("HRAOne")
-		fmt.Println(elevBehav1)
-		fmt.Println(elevDirn1)
-		fmt.Println(elevFloor1)
-		input := MasterStruct
+		input := HRAInput
+		fmt.Println("Inside master")
 
 		jsonBytes, err := json.Marshal(input)
 		fmt.Println("json.Marshal error: ", err)
 
-		ret, err := exec.Command("hall_request_assigner/"+hraExecutable, "-i", string(jsonBytes)).Output()
+		ret, err := exec.Command("../hall_request_assigner/"+hraExecutable, "-i", string(jsonBytes)).Output()
 		fmt.Println("exec.Command error: ", err)
 
 		err = json.Unmarshal(ret, &output)
@@ -55,9 +42,9 @@ func MasterFindNextAction(
 
 		}
 
-		for _, peer := range NewPeerList.Peers {
+		for _, peer := range MasterStruct.PeerList.Peers {
 			ElevatorHallReqs := (*output)[peer]
-			elevState := MasterStruct.States[peer]
+			elevState := HRAInput.States[peer]
 			ElevatorCabRequests := elevState.CabRequests
 			var action requests.Action
 			AllRequests := requests.RequestsAppendHallCab(ElevatorHallReqs, ElevatorCabRequests)
