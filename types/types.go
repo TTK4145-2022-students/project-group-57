@@ -60,7 +60,14 @@ type NewAction struct {
 }
 
 type MasterStruct struct {
-	Ready    bool
-	PeerList peers.PeerUpdate
-	HRAInput HRAInput
+	CurrentMasterID string
+	Isolated        bool
+	AlreadyExists   bool
+	PeerList        peers.PeerUpdate
+	HRAInput        HRAInput
+}
+
+type NewMasterID struct {
+	SlaveID     string
+	NewMasterID string
 }

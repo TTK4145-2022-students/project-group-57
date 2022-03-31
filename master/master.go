@@ -72,3 +72,26 @@ func MasterFindNextAction(
 		}
 	}
 }
+
+func MergeMasterStructs(MasterStruct types.MasterStruct, ReceivedMergeStruct types.MasterStruct) types.MasterStruct {
+	NewMasterStruct := MasterStruct
+	MasterHallRequests := MasterStruct.HRAInput.HallRequests
+	ReceivedHallRequests := ReceivedMergeStruct.HRAInput.HallRequests
+	ReceivedID := ReceivedMergeStruct.CurrentMasterID
+	ReceivedStates := ReceivedMergeStruct.HRAInput.States[ReceivedID]
+	ReceivedHallRequests = [][2]bool{{false, false}, {true, false}, {true, true}, {false, true}}
+
+	for i := 0; i < elevio.NumFloors; i++ {
+		for j := 0; j < elevio.NumButtonTypes-1; j++ {
+			NewMasterStruct.HRAInput.HallRequests[i][j] = MasterHallRequests[i][j] || ReceivedHallRequests[i][j]
+		}
+		if entry, ok := MasterStruct.HRAInput.States[ReceivedID]; ok {
+			entry.CabRequests[i] = MasterStruct.HRAInput.States[ReceivedID].CabRequests[i] || ReceivedStates.CabRequests[i]
+			entry.Behaviour = ReceivedStates.Behaviour
+			entry.Dirn = ReceivedStates.Dirn
+			entry.Floor = ReceivedStates.Floor
+			NewMasterStruct.HRAInput.States[ReceivedID] = entry
+		}
+	}
+	return NewMasterStruct
+}

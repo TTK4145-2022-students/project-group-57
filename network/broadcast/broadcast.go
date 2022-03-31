@@ -154,7 +154,6 @@ func TransmitMasterMsg(port int, chans ...interface{}) {
 	conn := conn.DialBroadcastUDP(port)
 	addr, _ := net.ResolveUDPAddr("udp4", fmt.Sprintf("255.255.255.255:%d", port))
 	for {
-		fmt.Println("MasterMsg")
 		chosen, value, _ := reflect.Select(selectCases)
 		jsonstr, _ := json.Marshal(value.Interface())
 		ttj, _ := json.Marshal(typeTaggedJSON{
