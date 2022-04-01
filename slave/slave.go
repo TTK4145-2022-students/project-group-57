@@ -61,7 +61,18 @@ func main() {
 	go broadcast.Receiver(16524, NewMasterIDCh)
 	go peers.Receiver(16522, PeerUpdateCh)
 
-	var MasterStruct types.MasterStruct
+	HRAInput := types.HRAInput{
+		HallRequests: [][2]bool{{false, false}, {false, false}, {false, false}, {false, false}},
+		States:       map[string]elevator.Elevator{},
+	}
+
+	MasterStruct := types.MasterStruct{
+		CurrentMasterID: "",
+		Isolated:        false,
+		AlreadyExists:   false,
+		PeerList:        peers.PeerUpdate{},
+		HRAInput:        HRAInput,
+	}
 	var Peerlist peers.PeerUpdate
 	//INIT
 	elevio.SetDoorOpenLamp(false)
@@ -155,7 +166,7 @@ func main() {
 						}
 						e, SingleElevatorRequests = fsm.Fsm_onFloorArrival(e, SingleElevatorRequests, a, doorTimer)
 
-					case a := <-drv_obstr: //Ask: Obstruction between floors, three seconds with open door after obstruction off.?
+					case a := <-drv_obstr:
 						fmt.Printf("%+v\n", a)
 						if a {
 							obstructionActive = true

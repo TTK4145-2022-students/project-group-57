@@ -143,28 +143,21 @@ func main() {
 						NewMasterID: MasterStruct.CurrentMasterID,
 					}
 					NewMasterIDCh <- NewMasterMsg
-
-					//////
-					MasterStruct = master.MergeMasterStructs(MasterStruct, ReceivedMergeStruct) //***alt under dette skal ikke være her testing only
-					fmt.Println(MasterStruct)
 				}
-				for k := range ReceivedMergeStruct.HRAInput.States { //BEHOLD
-					ReceivedID := k
-					MasterStruct.HRAInput.States[ReceivedID] = ReceivedMergeStruct.HRAInput.States[ReceivedID]
-				} //BEHOLDSLUTT
+				fmt.Println("Before *******************************")
 				fmt.Println(MasterStruct)
-
-				SetLightArray := [3]bool{}
-				for floor := 0; floor < elevio.NumFloors; floor++ {
-					SetLightArray[0] = MasterStruct.HRAInput.HallRequests[floor][0]
-					SetLightArray[1] = MasterStruct.HRAInput.HallRequests[floor][1]
-					SetLightArray[2] = MasterStruct.HRAInput.States[ReceivedMergeStruct.CurrentMasterID].CabRequests[floor]
-
-					SetOrderLight := types.SetOrderLight{ID: ReceivedMergeStruct.CurrentMasterID, BtnFloor: floor, LightOn: SetLightArray}
-					masterSetOrderLight <- SetOrderLight
+				for k := range ReceivedMergeStruct.HRAInput.States {
+					ReceivedID := k
+					if entry, ok := ReceivedMergeStruct.HRAInput.States[ReceivedID]; ok {
+						entry.Floor = ReceivedMergeStruct.HRAInput.States[ReceivedID].Floor
+						entry.CabRequests = MasterStruct.HRAInput.States[ReceivedID].CabRequests
+						fmt.Println(entry)
+						MasterStruct.HRAInput.States[ReceivedID] = entry
+					}
 				}
-
-				NewEvent <- MasterStruct //*** slutt
+				fmt.Println("After*********************************** ")
+				fmt.Println(MasterStruct)
+				NewEvent <- MasterStruct
 
 			} else {
 				fmt.Println("Already exists")
@@ -227,7 +220,6 @@ func main() {
 			}
 
 			fmt.Println(MasterStruct.HRAInput.States)
-			NewEvent <- MasterStruct
 			fmt.Println("Sent")
 
 		case slaveMsg := <-slaveButtonRx:

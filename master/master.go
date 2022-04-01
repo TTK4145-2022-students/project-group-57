@@ -44,8 +44,11 @@ func MasterFindNextAction(
 
 		for _, peer := range MasterStruct.PeerList.Peers {
 			ElevatorHallReqs := (*output)[peer]
+			fmt.Println(ElevatorHallReqs)
+
 			elevState := HRAInput.States[peer]
 			ElevatorCabRequests := elevState.CabRequests
+			fmt.Println(ElevatorCabRequests)
 			var action requests.Action
 			AllRequests := requests.RequestsAppendHallCab(ElevatorHallReqs, ElevatorCabRequests)
 
