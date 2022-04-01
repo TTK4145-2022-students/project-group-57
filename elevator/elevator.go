@@ -19,6 +19,13 @@ type Elevator struct {
 	CabRequests [elevio.NumFloors]bool `json:"cabRequests"`
 }
 
+type SingleElevator struct {
+	Floor     int
+	Dirn      string
+	Requests  [elevio.NumFloors][elevio.NumButtonTypes]bool
+	Behaviour ElevatorBehaviour
+}
+
 func ElevatorUninitialized() Elevator {
 	uninitElevator := Elevator{
 		Behaviour: EB_Idle,

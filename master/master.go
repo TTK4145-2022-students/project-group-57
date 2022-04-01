@@ -79,7 +79,7 @@ func MergeMasterStructs(MasterStruct types.MasterStruct, ReceivedMergeStruct typ
 	ReceivedHallRequests := ReceivedMergeStruct.HRAInput.HallRequests
 	ReceivedID := ReceivedMergeStruct.CurrentMasterID
 	ReceivedStates := ReceivedMergeStruct.HRAInput.States[ReceivedID]
-	ReceivedHallRequests = [][2]bool{{false, false}, {true, false}, {true, true}, {false, true}}
+	ReceivedHallRequests = [][2]bool{{false, false}, {false, false}, {false, false}, {false, false}}
 
 	for i := 0; i < elevio.NumFloors; i++ {
 		for j := 0; j < elevio.NumButtonTypes-1; j++ {

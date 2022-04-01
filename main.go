@@ -16,6 +16,7 @@ import (
 	"master/requests"
 	"master/types"
 	"os"
+	"strconv"
 	"time"
 )
 
@@ -59,12 +60,32 @@ func main() {
 	var NewPeerList peers.PeerUpdate
 
 	initArg := os.Args[1]
+
+	fmt.Println()
+	fmt.Println()
+	fmt.Println()
+	fmt.Println()
 	fmt.Println(initArg)
 
 	var MasterStruct types.MasterStruct
+	MasterStruct.HRAInput.States = map[string]elevator.Elevator{}
 	MasterStruct.AlreadyExists = false
 	if initArg == "init" {
+		SlaveID := os.Args[2]
+		CurrentFloor := os.Args[3]
+		fmt.Println(SlaveID)
+		fmt.Println(CurrentFloor)
 		fmt.Println("fake master")
+		var e elevator.Elevator
+		e = fsm.UnInitializedElevator(e)
+		MasterStruct.HRAInput.States[SlaveID] = e
+		fmt.Println(MasterStruct)
+		if entry, ok := MasterStruct.HRAInput.States[SlaveID]; ok {
+			fmt.Print("entry")
+			entry.Floor, _ = strconv.Atoi(CurrentFloor)
+			MasterStruct.HRAInput.States[SlaveID] = entry
+			fmt.Println(MasterStruct)
+		}
 		for i := 0; i < 7; i++ {
 			MasterMergeSend <- MasterStruct
 			time.Sleep(300 * time.Millisecond)
@@ -72,6 +93,10 @@ func main() {
 		fmt.Println("Time to kill")
 		os.Exit(99)
 	}
+	fmt.Println()
+	fmt.Println()
+	fmt.Println()
+	fmt.Println()
 	fmt.Println("Waiting")
 	MasterStruct = <-MasterInitStruct
 
@@ -111,8 +136,6 @@ func main() {
 		case ReceivedMergeStruct := <-MasterMergeReceive:
 			fmt.Printf("case: ReceivedMergeStruct ")
 			if !ReceivedMergeStruct.AlreadyExists {
-				//fmt.Println("Already exists not")
-				//fmt.Println(NewPeerList)
 				for _, peer := range MasterStruct.PeerList.Peers {
 					fmt.Println(peer)
 					NewMasterMsg := types.NewMasterID{
@@ -120,9 +143,17 @@ func main() {
 						NewMasterID: MasterStruct.CurrentMasterID,
 					}
 					NewMasterIDCh <- NewMasterMsg
+
+					//////
 					MasterStruct = master.MergeMasterStructs(MasterStruct, ReceivedMergeStruct) //***alt under dette skal ikke være her testing only
 					fmt.Println(MasterStruct)
 				}
+				for k := range ReceivedMergeStruct.HRAInput.States { //BEHOLD
+					ReceivedID := k
+					MasterStruct.HRAInput.States[ReceivedID] = ReceivedMergeStruct.HRAInput.States[ReceivedID]
+				} //BEHOLDSLUTT
+				fmt.Println(MasterStruct)
+
 				SetLightArray := [3]bool{}
 				for floor := 0; floor < elevio.NumFloors; floor++ {
 					SetLightArray[0] = MasterStruct.HRAInput.HallRequests[floor][0]

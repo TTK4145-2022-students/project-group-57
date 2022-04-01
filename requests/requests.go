@@ -1,6 +1,7 @@
 package requests
 
 import (
+	"fmt"
 	"master/Driver-go/elevio"
 	"master/elevator"
 )
@@ -18,6 +19,24 @@ func RequestsAppendHallCab(hall [][2]bool, cab [4]bool) [elevio.NumFloors][elevi
 		AllRequests[i][2] = ele
 	}
 	return AllRequests
+}
+
+func RequestsSplitHallCab(reqs [elevio.NumFloors][elevio.NumButtonTypes]bool) ([][2]bool, [4]bool) {
+	HallRequests := [][2]bool{{false, false}, {false, false}, {false, false}, {false, false}}
+	var CabRequests [4]bool
+	fmt.Println("Reqs:")
+	fmt.Println(reqs)
+	for i := 0; i < elevio.NumFloors; i++ {
+		fmt.Println("i:")
+		fmt.Println(i)
+		for j := 0; j < elevio.NumButtonTypes-1; j++ {
+			fmt.Println("j:")
+			fmt.Println(j)
+			HallRequests[i][j] = reqs[i][j]
+		}
+		CabRequests[i] = reqs[i][2]
+	}
+	return HallRequests, CabRequests
 }
 
 func RequestsAbove(e elevator.Elevator, reqs [elevio.NumFloors][elevio.NumButtonTypes]bool) bool {
@@ -131,4 +150,33 @@ func ShouldClearHallRequest(e elevator.Elevator, Hallreqs [][2]bool) [2]bool {
 		}
 	}
 	return [2]bool{false, false}
+}
+
+func SingleElevatorRequestShouldStop(e elevator.Elevator, reqs [elevio.NumFloors][elevio.NumButtonTypes]bool) bool {
+	switch e.Dirn {
+	case "down":
+		return reqs[e.Floor][elevio.BT_HallDown] || reqs[e.Floor][elevio.BT_Cab] || !RequestsBelow(e, reqs)
+	case "up":
+		return reqs[e.Floor][elevio.BT_HallUp] || reqs[e.Floor][elevio.BT_Cab] || !RequestsAbove(e, reqs)
+	case "stop":
+		return true
+	default:
+		return true
+	}
+}
+
+func ClearRequestImmediately(e elevator.Elevator, btnFloor int, btnType elevio.ButtonType) int {
+	if e.Floor == btnFloor {
+		if e.Dirn == "up" && btnType == elevio.BT_HallUp {
+			return 1
+		} else if e.Dirn == "down" && btnType == elevio.BT_HallDown {
+			return 1
+		} else if e.Dirn == "stop" {
+			return 1
+		} else if btnType == elevio.BT_Cab {
+			return 1
+		}
+		return 0
+	}
+	return 0
 }
