@@ -86,27 +86,26 @@ func main() {
 			MasterStruct.HRAInput.States[SlaveID] = entry
 			fmt.Println(MasterStruct)
 		}
-		for i := 0; i < 7; i++ {
+		//Sends to already existing master
+		//Send for a longer time?
+		//
+		for i := 0; i < 5; i++ {
 			MasterMergeSend <- MasterStruct
 			time.Sleep(300 * time.Millisecond)
 		}
 		fmt.Println("Time to kill")
 		os.Exit(99)
 	}
-	fmt.Println()
-	fmt.Println()
-	fmt.Println()
-	fmt.Println()
-	fmt.Println("Waiting")
+
 	MasterStruct = <-MasterInitStruct
+	MasterStruct.MySlaves = []string{MasterStruct.CurrentMasterID}
 
 	if !MasterStruct.AlreadyExists {
-
-		fmt.Println("AlreadyExists false") //Check out other possibilities, can be removed if we find another way to check if empty struct
+		//Check out other possibilities, can be removed if we find another way to check if empty struct
 
 		HRAInput := types.HRAInput{
 			HallRequests: [][2]bool{{false, false}, {false, false}, {false, false}, {false, false}},
-			States:       map[string]elevator.Elevator{},
+			States:       MasterStruct.HRAInput.States,
 		}
 
 		MasterStruct = types.MasterStruct{
@@ -115,68 +114,42 @@ func main() {
 			AlreadyExists:   true,
 			PeerList:        NewPeerList,
 			HRAInput:        HRAInput,
+			MySlaves:        []string{MasterStruct.CurrentMasterID},
 		}
 
-	} else {
-		fmt.Println("none")
-
 	}
-
-	fmt.Println("Masterstruct:")
-	fmt.Println(MasterStruct)
 
 	MasterStruct.AlreadyExists = true
 	for {
 		select {
 		case <-time.After(interval):
-			fmt.Printf("Sending Master MSG")
 			MasterMsg <- MasterStruct
-			//Sending periodically to slaves
 
 		case ReceivedMergeStruct := <-MasterMergeReceive:
-			fmt.Printf("case: ReceivedMergeStruct ")
-			if !ReceivedMergeStruct.AlreadyExists {
-				for _, peer := range MasterStruct.PeerList.Peers {
-					fmt.Println(peer)
-					NewMasterMsg := types.NewMasterID{
-						SlaveID:     peer,
-						NewMasterID: MasterStruct.CurrentMasterID,
-					}
-					NewMasterIDCh <- NewMasterMsg
-				}
-				fmt.Println("Before *******************************")
-				fmt.Println(MasterStruct)
-				for k := range ReceivedMergeStruct.HRAInput.States {
+			if !ReceivedMergeStruct.AlreadyExists { //Existing master, receiving initstruct from initmaster
+				for k := range ReceivedMergeStruct.HRAInput.States { //Single slaveID
 					ReceivedID := k
-					if entry, ok := ReceivedMergeStruct.HRAInput.States[ReceivedID]; ok {
+					if entry, ok := ReceivedMergeStruct.HRAInput.States[ReceivedID]; ok { //Keeping floor & cab from receivedStruct
 						entry.Floor = ReceivedMergeStruct.HRAInput.States[ReceivedID].Floor
 						entry.CabRequests = MasterStruct.HRAInput.States[ReceivedID].CabRequests
-						fmt.Println(entry)
 						MasterStruct.HRAInput.States[ReceivedID] = entry
-					}
+						MasterStruct.MySlaves = append(MasterStruct.MySlaves, k) //APPEND WITHOUT DUPLICATES MAKE FUNCTION 
+					} //ReceivedID exists in MasterStruct
 				}
-				fmt.Println("After*********************************** ")
-				fmt.Println(MasterStruct)
-				NewEvent <- MasterStruct
-
+				HallRequests := MasterStruct.HRAInput.HallRequests
+				for k := range MasterStruct.HRAInput.States { //Merge for nonexisting/empty receivedStruct
+					CabRequests := MasterStruct.HRAInput.States[k].CabRequests
+					AllRequests := requests.RequestsAppendHallCab(HallRequests, CabRequests)
+					SetOrderLight := types.SetOrderLight{MasterID: MasterStruct.CurrentMasterID, ID: k, LightOn: AllRequests}
+					masterSetOrderLight <- SetOrderLight
+				}
 			} else {
-				fmt.Println("Already exists")
-				if MasterStruct.Isolated {
-					fmt.Println("isolated")
+				if !MasterStruct.Isolated {
 					if ReceivedMergeStruct.Isolated {
 						NewMasterID := ReceivedMergeStruct.PeerList.Peers[0]
 						if NewMasterID == MasterStruct.CurrentMasterID {
-							//I am new master
-							//Send ID to slave
-							for _, peer := range ReceivedMergeStruct.PeerList.Peers {
-								NewMasterMsg := types.NewMasterID{
-									SlaveID:     peer,
-									NewMasterID: MasterStruct.CurrentMasterID,
-								}
-								NewMasterIDCh <- NewMasterMsg
-							}
+							MasterStruct.MySlaves = append(MasterStruct.MySlaves, ReceivedMergeStruct.PeerList.Peers...)
 							MasterStruct = master.MergeMasterStructs(MasterStruct, ReceivedMergeStruct)
-							fmt.Println(MasterStruct)
 						} else {
 							for i := 0; i < 10; i++ {
 								MasterMergeSend <- MasterStruct
@@ -185,42 +158,37 @@ func main() {
 							os.Exit(3)
 						}
 					} else {
-						//I am still master
-						//Send ID to slave
-						for _, peer := range ReceivedMergeStruct.PeerList.Peers {
-							NewMasterMsg := types.NewMasterID{
-								SlaveID:     peer,
-								NewMasterID: MasterStruct.CurrentMasterID,
-							}
-							NewMasterIDCh <- NewMasterMsg
-						}
+						MasterStruct.MySlaves = append(MasterStruct.MySlaves, ReceivedMergeStruct.PeerList.Peers...)
 						MasterStruct = master.MergeMasterStructs(MasterStruct, ReceivedMergeStruct)
-						fmt.Println("Merging")
-						fmt.Println(MasterStruct)
 					}
 				}
 			}
+			NewEvent <- MasterStruct
 
-		case NewPeerList = <-PeerUpdateCh:
-			fmt.Printf("case: PeerUpdateCh ")
-			MasterStruct.PeerList = NewPeerList
-			fmt.Println("Peers")
-			fmt.Println(MasterStruct.PeerList.Peers)
-			fmt.Println("Lost")
-			fmt.Println(MasterStruct.PeerList.Lost)
-			fmt.Println("New")
-			fmt.Println(MasterStruct.PeerList.New)
-
-			var e elevator.Elevator
-			e = fsm.UnInitializedElevator(e)
-			masterCommandMD <- types.MasterCommand{ID: MasterStruct.PeerList.New, Motordir: "down"}
-			if _, ok := MasterStruct.HRAInput.States[MasterStruct.PeerList.New]; ok {
-			} else if MasterStruct.PeerList.New != "" {
-				MasterStruct.HRAInput.States[MasterStruct.PeerList.New] = e //Fix here
+		case NewPeerList = <-PeerUpdateCh: //Use only for deleting, not adding new
+			fmt.Println("Peerlist")
+			fmt.Println(NewPeerList)
+			LostPeers := NewPeerList.Lost
+			if len(LostPeers) != 0 {
+				var MySlavesCopy = []string{}
+				for k := range LostPeers { //MAKE FUNCTION
+					for j := range MasterStruct.MySlaves {
+						if LostPeers[k] == MasterStruct.MySlaves[j] {
+							PeerToRemove := LostPeers[k]
+							for i := range MasterStruct.MySlaves {
+								if MasterStruct.MySlaves[i] != PeerToRemove {
+									MySlavesCopy = append(MySlavesCopy, MasterStruct.MySlaves[i]) //MAKE FUNCTION //APPEND WITHOUT DUPLICATES
+								}
+							}
+						}
+					}
+				}
+				fmt.Println("Peerupdate")
+				fmt.Println(MasterStruct.MySlaves)
+				MasterStruct.MySlaves = MySlavesCopy
+				fmt.Println(MySlavesCopy)
+				NewEvent <- MasterStruct
 			}
-
-			fmt.Println(MasterStruct.HRAInput.States)
-			fmt.Println("Sent")
 
 		case slaveMsg := <-slaveButtonRx:
 			if slaveMsg.Btn_type == 2 {
@@ -228,24 +196,17 @@ func main() {
 					entry.CabRequests[slaveMsg.Btn_floor] = true
 					MasterStruct.HRAInput.States[slaveMsg.ID] = entry
 				}
-
 			} else {
 				MasterStruct.HRAInput.HallRequests[slaveMsg.Btn_floor][slaveMsg.Btn_type] = true
 			}
-			SetLightArray := [3]bool{
-				MasterStruct.HRAInput.HallRequests[slaveMsg.Btn_floor][elevio.BT_HallUp],
-				MasterStruct.HRAInput.HallRequests[slaveMsg.Btn_floor][elevio.BT_HallDown],
-				MasterStruct.HRAInput.States[slaveMsg.ID].CabRequests[slaveMsg.Btn_floor]}
-			SetLightArray[slaveMsg.Btn_type] = true
-			SetOrderLight := types.SetOrderLight{ID: slaveMsg.ID, BtnFloor: slaveMsg.Btn_floor, LightOn: SetLightArray}
-
+			AllRequests := requests.RequestsAppendHallCab(MasterStruct.HRAInput.HallRequests, MasterStruct.HRAInput.States[slaveMsg.ID].CabRequests)
+			SetOrderLight := types.SetOrderLight{MasterID: MasterStruct.CurrentMasterID, ID: slaveMsg.ID, LightOn: AllRequests}
 			NewEvent <- MasterStruct
 			masterSetOrderLight <- SetOrderLight
 
 		case slaveMsg := <-slaveFloorRx:
 			elevatorID := slaveMsg.ID
 			elevatorFloor := slaveMsg.NewFloor
-
 			if entry, ok := MasterStruct.HRAInput.States[elevatorID]; ok {
 				entry.Floor = elevatorFloor
 				entry.Behaviour = elevator.EB_Idle
@@ -262,32 +223,35 @@ func main() {
 					MasterStruct.HRAInput.States[slaveMsg.ID] = entry
 				}
 				elevState = MasterStruct.HRAInput.States[slaveMsg.ID]
-
 				ClearHallReqs := requests.ShouldClearHallRequest(elevState, MasterStruct.HRAInput.HallRequests)
 				MasterStruct.HRAInput.HallRequests[elevState.Floor][elevio.BT_HallUp] = ClearHallReqs[elevio.BT_HallUp]
 				MasterStruct.HRAInput.HallRequests[elevState.Floor][elevio.BT_HallDown] = ClearHallReqs[elevio.BT_HallDown]
-
-				ClearLightArray := [3]bool{ClearHallReqs[elevio.BT_HallUp], ClearHallReqs[elevio.BT_HallDown], false}
-				SetOrderLight := types.SetOrderLight{ID: slaveMsg.ID, BtnFloor: elevState.Floor, LightOn: ClearLightArray}
+				AllRequests := requests.RequestsAppendHallCab(MasterStruct.HRAInput.HallRequests, MasterStruct.HRAInput.States[slaveMsg.ID].CabRequests)
+				SetOrderLight := types.SetOrderLight{MasterID: MasterStruct.CurrentMasterID, ID: slaveMsg.ID, LightOn: AllRequests}
 				masterSetOrderLight <- SetOrderLight
 			}
 			NewEvent <- MasterStruct
 
 		case a := <-NewAction:
+			//Send NewMAsterID to for all new actions (in new slave case)
+			//if extra info == NewAction.extra info
+			//Send NewMAsterIDch
+			NewMasterIDCh <- types.NewMasterID{SlaveID: a.ID, NewMasterID: MasterStruct.CurrentMasterID}
+			fmt.Println("NewAction: ")
+			fmt.Println(a.Action)
 			if entry, ok := MasterStruct.HRAInput.States[a.ID]; ok {
 				entry.Behaviour = a.Action.Behaviour
 				entry.Dirn = elevio.MotorDirToString(a.Action.Dirn)
 				MasterStruct.HRAInput.States[a.ID] = entry
 			}
-			fmt.Println(a.ID)
-			fmt.Println(MasterStruct.HRAInput.States[a.ID].Behaviour)
-			fmt.Println(MasterStruct.HRAInput.States[a.ID].Dirn)
 			if MasterStruct.HRAInput.States[a.ID].Behaviour == elevator.EB_DoorOpen {
-				commandDoorOpen <- types.DoorOpen{ID: a.ID, SetDoorOpen: true}
+				fmt.Println("Elevator DoorOpen")
+				commandDoorOpen <- types.DoorOpen{MasterID: MasterStruct.CurrentMasterID, ID: a.ID, SetDoorOpen: true}
 			} else {
-				masterCommandMD <- types.MasterCommand{ID: a.ID, Motordir: elevio.MotorDirToString(a.Action.Dirn)}
+				fmt.Println("Master give Direction:")
+				fmt.Println(a.Action.Dirn)
+				masterCommandMD <- types.MasterCommand{MasterID: MasterStruct.CurrentMasterID, ID: a.ID, Motordir: elevio.MotorDirToString(a.Action.Dirn)}
 			}
-
 		}
 	}
 }

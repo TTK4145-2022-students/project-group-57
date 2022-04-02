@@ -17,12 +17,8 @@ import (
 func main() {
 
 	numFloors := 4
-	elevio.Init("localhost:15660", numFloors)
+	elevio.Init("localhost:15661", numFloors)
 	MyID := "one"
-
-	if elevio.GetFloor() == -1 {
-		elevio.SetMotorDirection(elevio.MD_Down)
-	}
 
 	drv_buttons := make(chan elevio.ButtonEvent)
 	drv_floors := make(chan int)
@@ -61,20 +57,22 @@ func main() {
 	go broadcast.Receiver(16524, NewMasterIDCh)
 	go peers.Receiver(16522, PeerUpdateCh)
 
+	//INIT
 	HRAInput := types.HRAInput{
 		HallRequests: [][2]bool{{false, false}, {false, false}, {false, false}, {false, false}},
 		States:       map[string]elevator.Elevator{},
 	}
 
 	MasterStruct := types.MasterStruct{
-		CurrentMasterID: "",
+		CurrentMasterID: MyID,
 		Isolated:        false,
 		AlreadyExists:   false,
 		PeerList:        peers.PeerUpdate{},
 		HRAInput:        HRAInput,
 	}
 	var Peerlist peers.PeerUpdate
-	//INIT
+	InitLightsOff := [4][3]bool{}
+	fsm.SetAllLights(InitLightsOff)
 	elevio.SetDoorOpenLamp(false)
 	floor := elevio.GetFloor()
 	if floor == -1 {
@@ -85,6 +83,10 @@ func main() {
 	elevio.SetFloorIndicator(floor)
 
 	CurrentFloor := strconv.Itoa(floor)
+	var e elevator.Elevator
+	e = fsm.UnInitializedElevator(e)
+	e.Floor = floor
+	MasterStruct.HRAInput.States[MyID] = e
 
 	//Send ack/alive?
 	err := exec.Command("gnome-terminal", "--", "go", "run", "../main.go", "init", MyID, CurrentFloor).Run()
@@ -95,41 +97,32 @@ func main() {
 	doorTimer := time.NewTimer(100 * time.Second) //Trouble initializing timer like this, maybe
 	doorIsOpen := false
 	obstructionActive := false
-	fmt.Println(obstructionActive)
-
 	MasterTimeout := 5 * time.Second
 	MasterTimer := time.NewTimer(MasterTimeout)
+
 	for {
 		select {
 		case NewPeerlist := <-PeerUpdateCh:
 			Peerlist = NewPeerlist
 
 		case a := <-NewMasterIDCh:
+
 			if a.SlaveID == MyID {
 				MasterStruct.CurrentMasterID = a.NewMasterID
 			}
 
 		case a := <-MasterMsg:
-
-			//ignore msg from another master
 			if a.CurrentMasterID == MasterStruct.CurrentMasterID {
 				MasterStruct = a
-				fmt.Println(MasterStruct)
 				MasterTimer.Stop()
 				MasterTimer.Reset(MasterTimeout)
 			}
 
 		case <-MasterTimer.C:
-			fmt.Println("Master is dead")
-			fmt.Println("Last received message:")
-			fmt.Println(MasterStruct)
-			fmt.Println(len(Peerlist.Peers))
-
 			//Single elevator
-			if len(Peerlist.Peers) == 0 {
-				fmt.Println("single")
+
+			if len(Peerlist.Peers) == 0 { //must be zero
 				HallRequests := MasterStruct.HRAInput.HallRequests
-				fmt.Println(len(HallRequests))
 				if len(HallRequests) == 0 {
 					HallRequests = [][2]bool{{false, false}, {false, false}, {false, false}, {false, false}}
 				}
@@ -148,17 +141,13 @@ func main() {
 				if e.Floor == -1 {
 					e = fsm.Fsm_onInitBetweenFloors(e)
 				}
-				for len(Peerlist.Peers) == 1 { //must be zero
+				for len(Peerlist.Peers) == 0 { //must be zero
 					select {
 					case a := <-drv_buttons:
-						fmt.Println("buttonevent")
-						fmt.Printf("%+v\n", a)
 						elevio.SetButtonLamp(a.Button, a.Floor, true)
 						e, SingleElevatorRequests = fsm.Fsm_onRequestButtonPressed(e, SingleElevatorRequests, a.Floor, a.Button, doorTimer)
 
 					case a := <-drv_floors:
-						fmt.Println("floor")
-						fmt.Printf("%+v\n", a)
 						if a == numFloors-1 {
 							e.Dirn = "stop"
 						} else if a == 0 {
@@ -167,7 +156,6 @@ func main() {
 						e, SingleElevatorRequests = fsm.Fsm_onFloorArrival(e, SingleElevatorRequests, a, doorTimer)
 
 					case a := <-drv_obstr:
-						fmt.Printf("%+v\n", a)
 						if a {
 							obstructionActive = true
 						} else {
@@ -187,8 +175,6 @@ func main() {
 						}
 					case <-doorTimer.C:
 						if !obstructionActive {
-							fmt.Println("Timed out")
-							fmt.Println(e.Behaviour)
 							e, SingleElevatorRequests = fsm.Fsm_onDoorTimeout(e, SingleElevatorRequests)
 						}
 					case a := <-PeerUpdateCh:
@@ -197,13 +183,13 @@ func main() {
 						e.CabRequests = CabRequests
 						MasterStruct.HRAInput.States[MyID] = e
 						MasterStruct.HRAInput.HallRequests = HallRequests
-
 					}
 				}
 
-			} else if Peerlist.Peers[0] == MyID { //I am master
+			} else if Peerlist.Peers[0] == MyID { //I am master, start new master
 				err := exec.Command("gnome-terminal", "--", "go", "run", "../main.go", "master").Run()
 				fmt.Println(err)
+
 				go func(MasterStruct types.MasterStruct) {
 					for i := 0; i < 10; i++ {
 						MasterInitStruct <- MasterStruct
@@ -214,29 +200,19 @@ func main() {
 				MasterTimer.Stop()
 				MasterTimer.Reset(MasterTimeout)
 			}
-			//Two cases:
-			//1. Master is dead, start new master (contact with other elevators) -> start new master
-			//2. Lost network -> become single elevator
-
-			//state: isolated
-			//Single elevator mode (exercise 4)?
-			//Use last received struct
 
 		case a := <-drv_buttons:
 			buttonEvent := types.SlaveButtonEventMsg{
 				ID:        MyID,
 				Btn_floor: a.Floor,
-				Btn_type:  int(a.Button)} //Maybe a go routine
-
+				Btn_type:  int(a.Button)}
 			slaveButtonTx <- buttonEvent
 
 		case a := <-drv_floors:
 			floorEvent := types.SlaveFloor{ID: MyID, NewFloor: a}
 			slaveFloorTx <- floorEvent
-
 			elevio.SetFloorIndicator(a)
 			elevio.SetMotorDirection(elevio.MD_Stop)
-
 			if a == numFloors-1 {
 				elevio.SetMotorDirection(elevio.MD_Stop)
 			} else if a == 0 {
@@ -244,7 +220,6 @@ func main() {
 			}
 
 		case a := <-drv_obstr:
-			fmt.Printf("%+v\n", a)
 			if a {
 				obstructionActive = true
 			} else {
@@ -263,44 +238,42 @@ func main() {
 				}
 			}
 
-		case a := <-masterMotorDirRx: //Recieve direction from master
+		case a := <-masterMotorDirRx:
+			if a.ID == MyID && a.MasterID == MasterStruct.CurrentMasterID {
 
-			if a.ID == MyID {
 				floor := elevio.GetFloor()
 				if (floor == elevio.NumFloors-1 && a.Motordir == "up") ||
 					(floor == 0 && a.Motordir == "down") {
-					fmt.Println("Top or bottom floor")
 					floorEvent := types.SlaveFloor{ID: MyID, NewFloor: floor}
 					slaveFloorTx <- floorEvent
 				} else {
-					fmt.Println("Received dir")
-					fmt.Println(a.Motordir)
-					fmt.Println(doorIsOpen)
 					if !doorIsOpen {
-						fmt.Println("Door closed")
 						elevio.SetMotorDirection(elevio.StringToMotorDir(a.Motordir))
 					}
 				}
-
 			}
 
 		case a := <-masterSetOrderLight:
-			elevio.SetButtonLamp(elevio.ButtonType(elevio.BT_HallUp), a.BtnFloor, a.LightOn[0])
-			elevio.SetButtonLamp(elevio.ButtonType(elevio.BT_HallDown), a.BtnFloor, a.LightOn[1])
-			if a.ID == MyID {
-				elevio.SetButtonLamp(elevio.ButtonType(elevio.BT_Cab), a.BtnFloor, a.LightOn[2])
+			if a.ID == MyID && a.MasterID == MasterStruct.CurrentMasterID {
+				fsm.SetAllLights(a.LightOn)
+			} else {
+				fsm.SetOnlyHallLights(a.LightOn)
 			}
 
 		case a := <-commandDoorOpen:
-			if a.ID == MyID && !doorIsOpen && elevio.GetFloor() != -1 {
-				elevio.SetDoorOpenLamp(a.SetDoorOpen)
-				if a.SetDoorOpen {
-					doorIsOpen = true
-					doorTimer.Stop()
-					doorTimer.Reset(3 * time.Second)
+			if a.MasterID == MasterStruct.CurrentMasterID {
+				if a.ID == MyID && !doorIsOpen && elevio.GetFloor() != -1 {
+					elevio.SetDoorOpenLamp(a.SetDoorOpen)
+					elevio.SetMotorDirection(0)
+					if a.SetDoorOpen {
+						doorIsOpen = true
+						doorTimer.Stop()
+						doorTimer.Reset(3 * time.Second)
+					}
+					slaveDoorOpened <- a
 				}
-				slaveDoorOpened <- a
 			}
+
 		case <-doorTimer.C:
 			if !obstructionActive {
 				doorIsOpen = false

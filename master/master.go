@@ -19,42 +19,27 @@ func MasterFindNextAction(
 	hraExecutable := "hall_request_assigner"
 	output := new(map[string][][2]bool)
 	for {
-		fmt.Println("Waiting for input")
 		MasterStruct := <-NewEvent
+		fmt.Println("NewEventMasterStruct: ")
+		fmt.Println(MasterStruct)
 		HRAInput := MasterStruct.HRAInput
-		fmt.Println("Waiting for peers")
-
 		input := HRAInput
-		fmt.Println("Inside master")
-
-		jsonBytes, err := json.Marshal(input)
-		fmt.Println("json.Marshal error: ", err)
+		jsonBytes, _ := json.Marshal(input)
 
 		ret, err := exec.Command("../hall_request_assigner/"+hraExecutable, "-i", string(jsonBytes)).Output()
-		fmt.Println("exec.Command error: ", err)
-
+		fmt.Println(err)
 		err = json.Unmarshal(ret, &output)
-		fmt.Println("json.Unmarshal error: ", err)
+		fmt.Println(MasterStruct.MySlaves)
 
-		fmt.Printf("output: \n")
-		for k, v := range *output {
-			fmt.Printf("%6v :  %+v\n", k, v)
-
-		}
-
-		for _, peer := range MasterStruct.PeerList.Peers {
+		for _, peer := range MasterStruct.MySlaves {
+			fmt.Println("MySlaves: ")
+			fmt.Println(MasterStruct.MySlaves)
 			ElevatorHallReqs := (*output)[peer]
-			fmt.Println(ElevatorHallReqs)
-
 			elevState := HRAInput.States[peer]
 			ElevatorCabRequests := elevState.CabRequests
-			fmt.Println(ElevatorCabRequests)
 			var action requests.Action
 			AllRequests := requests.RequestsAppendHallCab(ElevatorHallReqs, ElevatorCabRequests)
-
 			if requests.RequestShouldStop(elevState, AllRequests) && elevState.Behaviour != "moving" {
-				fmt.Println("Should stop")
-				fmt.Println(elevState.Floor)
 				if requests.RequestsHere(elevState, AllRequests) {
 					action = requests.Action{Dirn: elevio.StringToMotorDir(elevState.Dirn), Behaviour: elevator.EB_DoorOpen}
 				} else {
@@ -62,15 +47,13 @@ func MasterFindNextAction(
 				}
 			} else {
 				if elevState.Behaviour == elevator.EB_Moving {
-					fmt.Println("Keeping dir")
 					action = requests.Action{Dirn: elevio.StringToMotorDir(elevState.Dirn), Behaviour: elevState.Behaviour}
 				} else {
 					action = requests.RequestsNextAction(elevState, AllRequests)
 				}
-
 			}
-
 			NextAction := types.NewAction{ID: peer, Action: action}
+			//Return extra info
 			NewAction <- NextAction
 		}
 	}
@@ -82,8 +65,6 @@ func MergeMasterStructs(MasterStruct types.MasterStruct, ReceivedMergeStruct typ
 	ReceivedHallRequests := ReceivedMergeStruct.HRAInput.HallRequests
 	ReceivedID := ReceivedMergeStruct.CurrentMasterID
 	ReceivedStates := ReceivedMergeStruct.HRAInput.States[ReceivedID]
-	ReceivedHallRequests = [][2]bool{{false, false}, {false, false}, {false, false}, {false, false}}
-
 	for i := 0; i < elevio.NumFloors; i++ {
 		for j := 0; j < elevio.NumButtonTypes-1; j++ {
 			NewMasterStruct.HRAInput.HallRequests[i][j] = MasterHallRequests[i][j] || ReceivedHallRequests[i][j]

@@ -17,11 +17,13 @@ type MasterAckOrderMsg struct {
 }
 
 type DoorOpen struct {
+	MasterID    string
 	ID          string
 	SetDoorOpen bool
 }
 
 type MasterCommand struct {
+	MasterID string
 	ID       string
 	Motordir string
 }
@@ -49,9 +51,9 @@ type HRAInput struct {
 }
 
 type SetOrderLight struct {
+	MasterID string
 	ID       string
-	BtnFloor int
-	LightOn  [3]bool
+	LightOn  [4][3]bool
 }
 
 type NewAction struct {
@@ -61,6 +63,7 @@ type NewAction struct {
 
 type MasterStruct struct {
 	CurrentMasterID string
+	MySlaves        []string
 	Isolated        bool
 	AlreadyExists   bool
 	PeerList        peers.PeerUpdate

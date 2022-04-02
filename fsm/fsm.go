@@ -10,10 +10,18 @@ import (
 
 //Maybe change switch-case to something else?
 
-func SetAllLights(es elevator.Elevator, reqs [elevio.NumFloors][elevio.NumButtonTypes]bool) {
+func SetAllLights(Allreqs [elevio.NumFloors][elevio.NumButtonTypes]bool) {
 	for floor := 0; floor < elevio.NumFloors; floor++ {
 		for btn := 0; btn < elevio.NumButtonTypes; btn++ {
-			elevio.SetButtonLamp(elevio.ButtonType(btn), floor, reqs[floor][btn])
+			elevio.SetButtonLamp(elevio.ButtonType(btn), floor, Allreqs[floor][btn])
+		}
+	}
+}
+
+func SetOnlyHallLights(Allreqs [elevio.NumFloors][elevio.NumButtonTypes]bool) {
+	for floor := 0; floor < elevio.NumFloors; floor++ {
+		for btn := 0; btn < elevio.NumButtonTypes-1; btn++ {
+			elevio.SetButtonLamp(elevio.ButtonType(btn), floor, Allreqs[floor][btn])
 		}
 	}
 }
@@ -65,7 +73,7 @@ func Fsm_onRequestButtonPressed(e elevator.Elevator, reqs [elevio.NumFloors][ele
 		case elevator.EB_Idle:
 		}
 	}
-	SetAllLights(e, reqs)
+	SetAllLights(reqs)
 	return e, reqs
 }
 
@@ -76,7 +84,7 @@ func Fsm_onFloorArrival(e elevator.Elevator, reqs [elevio.NumFloors][elevio.NumB
 	switch e.Behaviour {
 	case elevator.EB_Moving:
 		fmt.Println("inside case moving")
-		if requests.SingleElevatorRequestShouldStop(e, reqs) {
+		if requests.RequestShouldStop(e, reqs) {
 			fmt.Println("trying to stop")
 			elevio.SetMotorDirection(elevio.MD_Stop)
 			elevio.SetDoorOpenLamp(true)
@@ -89,7 +97,7 @@ func Fsm_onFloorArrival(e elevator.Elevator, reqs [elevio.NumFloors][elevio.NumB
 			reqs[e.Floor][0] = ClearHallReqs[0]
 			reqs[e.Floor][1] = ClearHallReqs[1]
 			reqs[e.Floor][2] = false
-			SetAllLights(e, reqs)
+			SetAllLights(reqs)
 			e.Behaviour = elevator.EB_DoorOpen
 		}
 	}
@@ -110,7 +118,7 @@ func Fsm_onDoorTimeout(e elevator.Elevator, reqs [elevio.NumFloors][elevio.NumBu
 		switch e.Behaviour {
 		case elevator.EB_DoorOpen:
 			e, reqs = requests.ClearRequestCurrentFloor(e, reqs)
-			SetAllLights(e, reqs)
+			SetAllLights(reqs)
 		case elevator.EB_Moving:
 			elevio.SetMotorDirection(elevio.StringToMotorDir(e.Dirn))
 		case elevator.EB_Idle:
