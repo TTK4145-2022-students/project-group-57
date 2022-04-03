@@ -16,29 +16,44 @@ func MasterFindNextAction(
 	NewAction chan<- types.NewAction,
 	commandDoorOpen chan<- types.DoorOpen,
 	masterCommandMD chan<- types.MasterCommand) {
-	hraExecutable := "hall_request_assigner"
-	output := new(map[string][][2]bool)
+	HRAExecutable := "hall_request_assigner"
+	HRAOutput := new(map[string][][2]bool)
 	for {
 		MasterStruct := <-NewEvent
 		fmt.Println("NewEventMasterStruct: ")
 		fmt.Println(MasterStruct)
-		HRAInput := MasterStruct.HRAInput
-		input := HRAInput
-		jsonBytes, _ := json.Marshal(input)
 
-		ret, err := exec.Command("../hall_request_assigner/"+hraExecutable, "-i", string(jsonBytes)).Output()
+		HRAInput := types.HRAInput{
+			HallRequests: MasterStruct.HallRequests,
+			States:       map[string]elevator.Elev{},
+		}
+		//Iterate Myslaves
+		//Save input = ElevStates[myslaveID]
+		for _, ID := range MasterStruct.MySlaves {
+			HRAInput.States[ID] = MasterStruct.ElevStates[ID]
+		}
+		fmt.Println("NewHRA: ")
+		fmt.Println(HRAInput)
+		jsonBytes, _ := json.Marshal(HRAInput)
+		ret, err := exec.Command("../hall_request_assigner/"+HRAExecutable, "-i", string(jsonBytes)).Output()
 		fmt.Println(err)
-		err = json.Unmarshal(ret, &output)
+		err = json.Unmarshal(ret, &HRAOutput)
+
+		fmt.Printf("output: \n")
+		for k, v := range *HRAOutput {
+			fmt.Printf("%6v :  %+v\n", k, v)
+		}
 		fmt.Println(MasterStruct.MySlaves)
 
 		for _, peer := range MasterStruct.MySlaves {
 			fmt.Println("MySlaves: ")
 			fmt.Println(MasterStruct.MySlaves)
-			ElevatorHallReqs := (*output)[peer]
+
+			ElevAssignedHallReqs := (*HRAOutput)[peer]
 			elevState := HRAInput.States[peer]
-			ElevatorCabRequests := elevState.CabRequests
+			ElevCabRequests := elevState.CabRequests
 			var action requests.Action
-			AllRequests := requests.RequestsAppendHallCab(ElevatorHallReqs, ElevatorCabRequests)
+			AllRequests := requests.RequestsAppendHallCab(ElevAssignedHallReqs, ElevCabRequests)
 			if requests.RequestShouldStop(elevState, AllRequests) && elevState.Behaviour != "moving" {
 				if requests.RequestsHere(elevState, AllRequests) {
 					action = requests.Action{Dirn: elevio.StringToMotorDir(elevState.Dirn), Behaviour: elevator.EB_DoorOpen}
@@ -61,20 +76,20 @@ func MasterFindNextAction(
 
 func MergeMasterStructs(MasterStruct types.MasterStruct, ReceivedMergeStruct types.MasterStruct) types.MasterStruct {
 	NewMasterStruct := MasterStruct
-	MasterHallRequests := MasterStruct.HRAInput.HallRequests
-	ReceivedHallRequests := ReceivedMergeStruct.HRAInput.HallRequests
+	MasterHallRequests := MasterStruct.HallRequests
+	ReceivedHallRequests := ReceivedMergeStruct.HallRequests
 	ReceivedID := ReceivedMergeStruct.CurrentMasterID
-	ReceivedStates := ReceivedMergeStruct.HRAInput.States[ReceivedID]
+	ReceivedStates := ReceivedMergeStruct.ElevStates[ReceivedID]
 	for i := 0; i < elevio.NumFloors; i++ {
 		for j := 0; j < elevio.NumButtonTypes-1; j++ {
-			NewMasterStruct.HRAInput.HallRequests[i][j] = MasterHallRequests[i][j] || ReceivedHallRequests[i][j]
+			NewMasterStruct.HallRequests[i][j] = MasterHallRequests[i][j] || ReceivedHallRequests[i][j]
 		}
-		if entry, ok := MasterStruct.HRAInput.States[ReceivedID]; ok {
-			entry.CabRequests[i] = MasterStruct.HRAInput.States[ReceivedID].CabRequests[i] || ReceivedStates.CabRequests[i]
+		if entry, ok := MasterStruct.ElevStates[ReceivedID]; ok {
+			entry.CabRequests[i] = MasterStruct.ElevStates[ReceivedID].CabRequests[i] || ReceivedStates.CabRequests[i]
 			entry.Behaviour = ReceivedStates.Behaviour
 			entry.Dirn = ReceivedStates.Dirn
 			entry.Floor = ReceivedStates.Floor
-			NewMasterStruct.HRAInput.States[ReceivedID] = entry
+			NewMasterStruct.ElevStates[ReceivedID] = entry
 		}
 	}
 	return NewMasterStruct

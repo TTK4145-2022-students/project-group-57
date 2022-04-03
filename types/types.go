@@ -1,6 +1,7 @@
 package types
 
 import (
+	"master/Driver-go/elevio"
 	"master/elevator"
 	"master/network/peers"
 	"master/requests"
@@ -8,10 +9,6 @@ import (
 
 type SlaveButtonEventMsg struct {
 	ID        string
-	Btn_floor int
-	Btn_type  int
-}
-type MasterAckOrderMsg struct {
 	Btn_floor int
 	Btn_type  int
 }
@@ -33,21 +30,18 @@ type SlaveFloor struct {
 	NewFloor int
 }
 
+/*
 type AllRequests struct {
 	Requests [][]bool
 }
 
-type MasterHallRequests struct {
+type HallRequests struct {
 	Requests [][2]bool
-}
-
-type ElevatorHallRequests struct {
-	Requests [][2]bool
-}
+}*/
 
 type HRAInput struct {
-	HallRequests [][2]bool                    `json:"hallRequests"`
-	States       map[string]elevator.Elevator `json:"states"`
+	HallRequests [][2]bool                `json:"hallRequests"`
+	States       map[string]elevator.Elev `json:"states"`
 }
 
 type SetOrderLight struct {
@@ -61,13 +55,19 @@ type NewAction struct {
 	Action requests.Action
 }
 
+type UnableToMove struct {
+	ID           string
+	UnableToMove bool
+}
+
 type MasterStruct struct {
 	CurrentMasterID string
 	MySlaves        []string
 	Isolated        bool
 	AlreadyExists   bool
 	PeerList        peers.PeerUpdate
-	HRAInput        HRAInput
+	HallRequests    [][elevio.NumButtonTypes - 1]bool
+	ElevStates      map[string]elevator.Elev
 }
 
 type NewMasterID struct {

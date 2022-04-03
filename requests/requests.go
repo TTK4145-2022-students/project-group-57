@@ -8,7 +8,7 @@ import (
 
 type Action struct {
 	Dirn      elevio.MotorDirection
-	Behaviour elevator.ElevatorBehaviour
+	Behaviour elevator.ElevBehaviour
 }
 
 func RequestsAppendHallCab(hall [][2]bool, cab [4]bool) [elevio.NumFloors][elevio.NumButtonTypes]bool {
@@ -39,7 +39,7 @@ func RequestsSplitHallCab(reqs [elevio.NumFloors][elevio.NumButtonTypes]bool) ([
 	return HallRequests, CabRequests
 }
 
-func RequestsAbove(e elevator.Elevator, reqs [elevio.NumFloors][elevio.NumButtonTypes]bool) bool {
+func RequestsAbove(e elevator.Elev, reqs [elevio.NumFloors][elevio.NumButtonTypes]bool) bool {
 	for i := e.Floor + 1; i < elevio.NumFloors; i++ {
 		for btn := 0; btn < elevio.NumButtonTypes; btn++ {
 			if reqs[i][btn] {
@@ -50,7 +50,7 @@ func RequestsAbove(e elevator.Elevator, reqs [elevio.NumFloors][elevio.NumButton
 	return false
 }
 
-func RequestsBelow(e elevator.Elevator, reqs [elevio.NumFloors][elevio.NumButtonTypes]bool) bool {
+func RequestsBelow(e elevator.Elev, reqs [elevio.NumFloors][elevio.NumButtonTypes]bool) bool {
 	for i := 0; i < e.Floor; i++ {
 		for btn := 0; btn < elevio.NumButtonTypes; btn++ {
 			if reqs[i][btn] {
@@ -62,7 +62,7 @@ func RequestsBelow(e elevator.Elevator, reqs [elevio.NumFloors][elevio.NumButton
 }
 
 //Modified to work without cabreqs
-func RequestsHere(e elevator.Elevator, reqs [elevio.NumFloors][elevio.NumButtonTypes]bool) bool {
+func RequestsHere(e elevator.Elev, reqs [elevio.NumFloors][elevio.NumButtonTypes]bool) bool {
 	for btn := 0; btn < elevio.NumButtonTypes; btn++ {
 		if reqs[e.Floor][btn] {
 			return true
@@ -71,7 +71,7 @@ func RequestsHere(e elevator.Elevator, reqs [elevio.NumFloors][elevio.NumButtonT
 	return false
 }
 
-func RequestsNextAction(e elevator.Elevator, reqs [elevio.NumFloors][elevio.NumButtonTypes]bool) Action {
+func RequestsNextAction(e elevator.Elev, reqs [elevio.NumFloors][elevio.NumButtonTypes]bool) Action {
 	switch e.Dirn {
 	case "up":
 		if RequestsAbove(e, reqs) {
@@ -108,7 +108,7 @@ func RequestsNextAction(e elevator.Elevator, reqs [elevio.NumFloors][elevio.NumB
 	}
 }
 
-func RequestShouldStop(e elevator.Elevator, reqs [elevio.NumFloors][elevio.NumButtonTypes]bool) bool {
+func RequestShouldStop(e elevator.Elev, reqs [elevio.NumFloors][elevio.NumButtonTypes]bool) bool {
 	switch e.Dirn {
 	case "down":
 		return reqs[e.Floor][elevio.BT_HallDown] || reqs[e.Floor][elevio.BT_Cab] || !RequestsBelow(e, reqs)
@@ -121,7 +121,7 @@ func RequestShouldStop(e elevator.Elevator, reqs [elevio.NumFloors][elevio.NumBu
 	}
 }
 
-func ClearRequestCurrentFloor(e elevator.Elevator, reqs [elevio.NumFloors][elevio.NumButtonTypes]bool) (elevator.Elevator, [elevio.NumFloors][elevio.NumButtonTypes]bool) {
+func ClearRequestCurrentFloor(e elevator.Elev, reqs [elevio.NumFloors][elevio.NumButtonTypes]bool) (elevator.Elev, [elevio.NumFloors][elevio.NumButtonTypes]bool) {
 	//reqs.Requests[e.Floor][elevio.BT_Cab] = false
 	//elevio.SetButtonLamp(elevio.BT_Cab, e.Floor, false)
 	reqs[e.Floor][elevio.BT_Cab] = false
@@ -132,27 +132,28 @@ func ClearRequestCurrentFloor(e elevator.Elevator, reqs [elevio.NumFloors][elevi
 	return e, reqs
 }
 
-func ShouldClearHallRequest(e elevator.Elevator, Hallreqs [][2]bool) [2]bool {
+func ShouldClearHallRequest(e elevator.Elev, Hallreqs [][2]bool) [2]bool {
 	AllReqs := RequestsAppendHallCab(Hallreqs, e.CabRequests)
-	switch e.Dirn {
-	case "up":
-		if !RequestsAbove(e, AllReqs) && !AllReqs[e.Floor][elevio.BT_HallUp] {
-			return [2]bool{false, false}
-		} else if AllReqs[e.Floor][elevio.BT_HallDown] {
-			return [2]bool{false, true}
-		}
-
-	case "down":
-		if !RequestsBelow(e, AllReqs) && !AllReqs[e.Floor][elevio.BT_HallDown] {
-			return [2]bool{false, false}
-		} else if AllReqs[e.Floor][elevio.BT_HallUp] {
-			return [2]bool{true, false}
+	if Hallreqs[e.Floor][0] && Hallreqs[e.Floor][1] {
+		switch e.Dirn {
+		case "up":
+			if !RequestsAbove(e, AllReqs) && !AllReqs[e.Floor][elevio.BT_HallUp] {
+				return [2]bool{false, false}
+			} else if AllReqs[e.Floor][elevio.BT_HallDown] {
+				return [2]bool{false, true}
+			}
+		case "down":
+			if !RequestsBelow(e, AllReqs) && !AllReqs[e.Floor][elevio.BT_HallDown] {
+				return [2]bool{false, false}
+			} else if AllReqs[e.Floor][elevio.BT_HallUp] {
+				return [2]bool{true, false}
+			}
 		}
 	}
 	return [2]bool{false, false}
 }
 
-func SingleElevatorRequestShouldStop(e elevator.Elevator, reqs [elevio.NumFloors][elevio.NumButtonTypes]bool) bool {
+func SingleElevRequestShouldStop(e elevator.Elev, reqs [elevio.NumFloors][elevio.NumButtonTypes]bool) bool {
 	switch e.Dirn {
 	case "down":
 		return reqs[e.Floor][elevio.BT_HallDown] || reqs[e.Floor][elevio.BT_Cab] || !RequestsBelow(e, reqs)
@@ -165,7 +166,7 @@ func SingleElevatorRequestShouldStop(e elevator.Elevator, reqs [elevio.NumFloors
 	}
 }
 
-func ClearRequestImmediately(e elevator.Elevator, btnFloor int, btnType elevio.ButtonType) int {
+func ClearRequestImmediately(e elevator.Elev, btnFloor int, btnType elevio.ButtonType) int {
 	if e.Floor == btnFloor {
 		if e.Dirn == "up" && btnType == elevio.BT_HallUp {
 			return 1

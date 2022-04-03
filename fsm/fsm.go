@@ -26,14 +26,14 @@ func SetOnlyHallLights(Allreqs [elevio.NumFloors][elevio.NumButtonTypes]bool) {
 	}
 }
 
-func Fsm_onInitBetweenFloors(e elevator.Elevator) elevator.Elevator {
+func Fsm_onInitBetweenFloors(e elevator.Elev) elevator.Elev {
 	elevio.SetMotorDirection(elevio.MD_Down)
 	e.Dirn = elevio.MotorDirToString(elevio.MD_Down)
 	e.Behaviour = elevator.EB_Moving
 	return e
 }
 
-func UnInitializedElevator(e elevator.Elevator) elevator.Elevator {
+func UnInitializedElev(e elevator.Elev) elevator.Elev {
 	e.Floor = 0
 	e.Dirn = "stop"
 	e.Behaviour = "idle"
@@ -42,7 +42,7 @@ func UnInitializedElevator(e elevator.Elevator) elevator.Elevator {
 
 }
 
-func Fsm_onRequestButtonPressed(e elevator.Elevator, reqs [elevio.NumFloors][elevio.NumButtonTypes]bool, btnFloor int, btn_type elevio.ButtonType, doorTimer *time.Timer) (elevator.Elevator, [elevio.NumFloors][elevio.NumButtonTypes]bool) {
+func Fsm_onRequestButtonPressed(e elevator.Elev, reqs [elevio.NumFloors][elevio.NumButtonTypes]bool, btnFloor int, btn_type elevio.ButtonType, doorTimer *time.Timer) (elevator.Elev, [elevio.NumFloors][elevio.NumButtonTypes]bool) {
 
 	switch e.Behaviour {
 	case elevator.EB_DoorOpen:
@@ -77,7 +77,7 @@ func Fsm_onRequestButtonPressed(e elevator.Elevator, reqs [elevio.NumFloors][ele
 	return e, reqs
 }
 
-func Fsm_onFloorArrival(e elevator.Elevator, reqs [elevio.NumFloors][elevio.NumButtonTypes]bool, newFloor int, doorTimer *time.Timer) (elevator.Elevator, [elevio.NumFloors][elevio.NumButtonTypes]bool) {
+func Fsm_onFloorArrival(e elevator.Elev, reqs [elevio.NumFloors][elevio.NumButtonTypes]bool, newFloor int, doorTimer *time.Timer) (elevator.Elev, [elevio.NumFloors][elevio.NumButtonTypes]bool) {
 	e.Floor = newFloor
 	elevio.SetFloorIndicator(newFloor)
 	fmt.Println(e.Behaviour)
@@ -104,7 +104,8 @@ func Fsm_onFloorArrival(e elevator.Elevator, reqs [elevio.NumFloors][elevio.NumB
 	return e, reqs
 }
 
-func Fsm_onDoorTimeout(e elevator.Elevator, reqs [elevio.NumFloors][elevio.NumButtonTypes]bool) (elevator.Elevator, [elevio.NumFloors][elevio.NumButtonTypes]bool) {
+func Fsm_onDoorTimeout(e elevator.Elev,
+	reqs [elevio.NumFloors][elevio.NumButtonTypes]bool) (elevator.Elev, [elevio.NumFloors][elevio.NumButtonTypes]bool) {
 	elevio.SetDoorOpenLamp(false)
 	switch e.Behaviour {
 	case elevator.EB_DoorOpen:
