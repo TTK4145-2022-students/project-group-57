@@ -120,12 +120,14 @@ func main() {
 	}
 
 	MasterStruct.AlreadyExists = true
+
 	for {
 		select {
 		case <-time.After(interval):
 			MasterMsg <- MasterStruct
 
 		case ReceivedMergeStruct := <-MasterMergeReceive:
+			fmt.Println("Case ReceivedMasterStruct")
 			if !ReceivedMergeStruct.AlreadyExists { //Existing master, receiving initstruct from initmaster
 				for k := range ReceivedMergeStruct.HRAInput.States { //Single slaveID
 					ReceivedID := k
@@ -133,7 +135,8 @@ func main() {
 						entry.Floor = ReceivedMergeStruct.HRAInput.States[ReceivedID].Floor
 						entry.CabRequests = MasterStruct.HRAInput.States[ReceivedID].CabRequests
 						MasterStruct.HRAInput.States[ReceivedID] = entry
-						MasterStruct.MySlaves = append(MasterStruct.MySlaves, k) //APPEND WITHOUT DUPLICATES MAKE FUNCTION 
+						MasterStruct.MySlaves = append(MasterStruct.MySlaves, k) //APPEND WITHOUT DUPLICATES MAKE FUNCTION
+						MasterStruct.MySlaves = master.RemoveDuplicates(MasterStruct.MySlaves)
 					} //ReceivedID exists in MasterStruct
 				}
 				HallRequests := MasterStruct.HRAInput.HallRequests
@@ -168,25 +171,11 @@ func main() {
 		case NewPeerList = <-PeerUpdateCh: //Use only for deleting, not adding new
 			fmt.Println("Peerlist")
 			fmt.Println(NewPeerList)
-			LostPeers := NewPeerList.Lost
-			if len(LostPeers) != 0 {
-				var MySlavesCopy = []string{}
-				for k := range LostPeers { //MAKE FUNCTION
-					for j := range MasterStruct.MySlaves {
-						if LostPeers[k] == MasterStruct.MySlaves[j] {
-							PeerToRemove := LostPeers[k]
-							for i := range MasterStruct.MySlaves {
-								if MasterStruct.MySlaves[i] != PeerToRemove {
-									MySlavesCopy = append(MySlavesCopy, MasterStruct.MySlaves[i]) //MAKE FUNCTION //APPEND WITHOUT DUPLICATES
-								}
-							}
-						}
-					}
+			if len(NewPeerList.Lost) != 0 {
+				for k := range NewPeerList.Lost {
+					MasterStruct.MySlaves = master.DeleteLostPeer(MasterStruct.MySlaves, NewPeerList.Lost[k])
 				}
-				fmt.Println("Peerupdate")
 				fmt.Println(MasterStruct.MySlaves)
-				MasterStruct.MySlaves = MySlavesCopy
-				fmt.Println(MySlavesCopy)
 				NewEvent <- MasterStruct
 			}
 

@@ -79,3 +79,25 @@ func MergeMasterStructs(MasterStruct types.MasterStruct, ReceivedMergeStruct typ
 	}
 	return NewMasterStruct
 }
+
+func RemoveDuplicates(MySlaves []string) []string {
+	inResult := make(map[string]bool)
+	var result []string
+	for _, str := range MySlaves {
+		if _, ok := inResult[str]; !ok {
+			inResult[str] = true
+			result = append(result, str)
+		}
+	}
+	return result
+}
+
+func DeleteLostPeer(MySlaves []string, LostPeers string) []string {
+	var UpdatedMySlaves []string
+	for j := range MySlaves {
+		if LostPeers != MySlaves[j] {
+			UpdatedMySlaves = append(UpdatedMySlaves, MySlaves[j])
+		}
+	}
+	return UpdatedMySlaves
+}
