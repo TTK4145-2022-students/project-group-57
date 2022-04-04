@@ -49,14 +49,14 @@ func main() {
 	go broadcast.Transmitter(16521, slaveDoorOpened)
 	go broadcast.Transmitter(16527, MasterInitStruct)
 	go broadcast.Transmitter(16528, UnableToMoveCh)
-	go peers.Transmitter(16522, MyID, transmitEnable)
+	go peers.Transmitter(16529, MyID, transmitEnable)
 
 	go broadcast.Receiver(16515, masterMotorDirRx)
 	go broadcast.Receiver(16518, masterSetOrderLight)
 	go broadcast.Receiver(16520, commandDoorOpen)
 	go broadcast.Receiver(16523, MasterMsg)
 	go broadcast.Receiver(16524, NewMasterIDCh)
-	go peers.Receiver(16522, PeerUpdateCh)
+	go peers.Receiver(16529, PeerUpdateCh)
 
 	//INIT
 
@@ -99,6 +99,7 @@ func main() {
 	MasterTimeout := 5 * time.Second
 	MasterTimer := time.NewTimer(MasterTimeout)
 	UnAbleToMoveTimerStarted := false
+	UnAbleToMoveIterator := 0
 
 	for {
 		select {
@@ -116,6 +117,13 @@ func main() {
 				MasterStruct = a
 				MasterTimer.Stop()
 				MasterTimer.Reset(MasterTimeout)
+			}
+			if UnAbleToMoveIterator == 3 { //grisete
+				UnAbleToMoveTimerStarted = false
+				UnableToMoveCh <- types.UnableToMove{ID: MyID, UnableToMove: false}
+				UnAbleToMoveIterator = 0
+			} else {
+				UnAbleToMoveIterator++
 			}
 
 		case <-MasterTimer.C:
@@ -260,15 +268,22 @@ func main() {
 			}
 
 		case a := <-masterMotorDirRx:
+
 			if a.ID == MyID && a.MasterID == MasterStruct.CurrentMasterID {
-				//Start timer if move
+				//Problem: Door open, Receiving new direction while door is open
+				//->Starting unabletomovetimer
+
 				fmt.Println("UnabletoMoveTimer value: ")
 				fmt.Println(UnAbleToMoveTimerStarted)
-				if a.Motordir != "stop" && !UnAbleToMoveTimerStarted {
+				if a.Motordir != "stop" && !UnAbleToMoveTimerStarted && !doorIsOpen {
 					fmt.Println("UnableToMoveTimer started")
 					UnableToMoveTimer.Stop()
 					UnableToMoveTimer.Reset(3 * time.Second)
 					UnAbleToMoveTimerStarted = true
+				} else if a.Motordir == "stop" && UnAbleToMoveTimerStarted {
+					UnableToMoveTimer.Stop()
+					UnAbleToMoveTimerStarted = false
+					UnableToMoveCh <- types.UnableToMove{ID: MyID, UnableToMove: true}
 				}
 				floor := elevio.GetFloor()
 				if (floor == elevio.NumFloors-1 && a.Motordir == "up") ||
@@ -282,8 +297,18 @@ func main() {
 				}
 			}
 		case <-UnableToMoveTimer.C:
-			fmt.Println("UnableToMove sent")
+			fmt.Println()
+			fmt.Println()
+			fmt.Println()
+			fmt.Println()
+			fmt.Println("***********************************UnableToMove sent*****************************")
+			fmt.Println()
+			fmt.Println()
+			fmt.Println()
+			fmt.Println()
+
 			UnableToMoveCh <- types.UnableToMove{ID: MyID, UnableToMove: true}
+			UnAbleToMoveTimerStarted = false
 
 		case a := <-masterSetOrderLight:
 			if a.ID == MyID && a.MasterID == MasterStruct.CurrentMasterID {

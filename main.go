@@ -40,7 +40,7 @@ func main() {
 	MasterMergeReceive := make(chan types.MasterStruct, 3)
 
 	NewMasterIDCh := make(chan types.NewMasterID)
-	UnableToMoveCh := make(chan types.UnableToMove)
+	UnableToMoveCh := make(chan types.UnableToMove, 3)
 
 	go broadcast.Receiver(16513, slaveButtonRx)
 	go broadcast.Receiver(16514, slaveFloorRx)
@@ -49,14 +49,14 @@ func main() {
 	go broadcast.Transmitter(16515, masterCommandMD)
 	go broadcast.Transmitter(16518, masterSetOrderLight)
 	go broadcast.Transmitter(16520, commandDoorOpen)
-	go master.MasterFindNextAction(NewEvent, NewAction, commandDoorOpen, masterCommandMD)
+	go master.MasterFindNextAction(NewEvent, NewAction)
 	go broadcast.TransmitMasterMsg(16523, MasterMsg)
 	go broadcast.Transmitter(16524, NewMasterIDCh)
 	go broadcast.Transmitter(16585, MasterMergeSend)
 	go broadcast.Receiver(16585, MasterMergeReceive)
 	go broadcast.Receiver(16528, UnableToMoveCh)
 
-	go peers.Receiver(16522, PeerUpdateCh)
+	go peers.Receiver(16529, PeerUpdateCh)
 
 	const interval = 500 * time.Millisecond
 	var NewPeerList peers.PeerUpdate
@@ -116,14 +116,14 @@ func main() {
 
 	MasterStruct = <-MasterInitStruct
 	MasterStruct.Initialized = true
-
+	IsolatedMasterStruct := MasterStruct
 	if isolatedArg == "isolated" {
-		go func(MasterStruct types.MasterStruct) {
+		go func() {
 			for i := 0; i < 5; i++ {
-				MasterMergeSend <- MasterStruct
+				MasterMergeSend <- IsolatedMasterStruct
 				time.Sleep(300 * time.Millisecond)
 			}
-		}(MasterStruct)
+		}()
 	}
 
 	for {
@@ -133,6 +133,15 @@ func main() {
 			fmt.Println(a.UnableToMove)
 			if a.UnableToMove {
 				MasterStruct.MySlaves = master.DeleteLostPeer(MasterStruct.MySlaves, a.ID)
+				fmt.Println()
+				fmt.Println()
+				fmt.Println()
+				fmt.Println()
+				fmt.Println("***********************************Deleted Slave*****************************")
+				fmt.Println(a.ID)
+				fmt.Println()
+				fmt.Println()
+				fmt.Println()
 			} else {
 				MasterStruct.MySlaves = master.AppendNoDuplicates(MasterStruct.MySlaves, a.ID)
 			}

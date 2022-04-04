@@ -13,9 +13,7 @@ import (
 //Finds next action
 func MasterFindNextAction(
 	NewEvent <-chan types.MasterStruct,
-	NewAction chan<- types.NewAction,
-	commandDoorOpen chan<- types.DoorOpen,
-	masterCommandMD chan<- types.MasterCommand) {
+	NewAction chan<- types.NewAction) {
 	HRAExecutable := "hall_request_assigner"
 	HRAOutput := new(map[string][][2]bool)
 	for {
