@@ -17,7 +17,8 @@ import (
 func main() {
 
 	numFloors := 4
-	elevio.Init("localhost:15661", numFloors)
+	elevio.Init("localhost:15657", numFloors)
+	//Can use localIP, but not when testing on single computer
 	MyID := "one"
 
 	drv_buttons := make(chan elevio.ButtonEvent)
@@ -59,14 +60,6 @@ func main() {
 
 	//INIT
 
-	MasterStruct := types.MasterStruct{
-		CurrentMasterID: MyID,
-		Isolated:        false,
-		AlreadyExists:   false,
-		PeerList:        peers.PeerUpdate{},
-		HallRequests:    [][2]bool{{false, false}, {false, false}, {false, false}, {false, false}},
-		ElevStates:      map[string]elevator.Elev{},
-	}
 	var Peerlist peers.PeerUpdate
 	InitLightsOff := [4][3]bool{}
 	fsm.SetAllLights(InitLightsOff)
@@ -78,16 +71,24 @@ func main() {
 	}
 	elevio.SetMotorDirection(elevio.MD_Stop)
 	elevio.SetFloorIndicator(floor)
-
 	CurrentFloor := strconv.Itoa(floor)
-	var e elevator.Elev
-	e = fsm.UnInitializedElev(e)
-	e.Floor = floor
-	MasterStruct.ElevStates[MyID] = e
 
-	//Send ack/alive?
 	err := exec.Command("gnome-terminal", "--", "go", "run", "../main.go", "init", MyID, CurrentFloor).Run()
 	fmt.Println(err)
+
+	MasterStruct := types.MasterStruct{
+		CurrentMasterID: MyID,
+		Isolated:        false,
+		Initialized:     false,
+		PeerList:        peers.PeerUpdate{},
+		HallRequests:    [][2]bool{{false, false}, {false, false}, {false, false}, {false, false}},
+		ElevStates:      map[string]elevator.Elev{},
+		MySlaves:        []string{MyID},
+	}
+
+	e := fsm.UnInitializedElev()
+	e.Floor = floor
+	MasterStruct.ElevStates[MyID] = e
 
 	//MasterStruct.CurrentMasterID = MyID
 
@@ -177,17 +178,21 @@ func main() {
 							e, SingleElevRequests = fsm.Fsm_onDoorTimeout(e, SingleElevRequests)
 						}
 					case a := <-PeerUpdateCh:
+						//what happens here
 						Peerlist = a
 						HallRequests, CabRequests = requests.RequestsSplitHallCab(SingleElevRequests)
 						e.CabRequests = CabRequests
 						MasterStruct.ElevStates[MyID] = e
 						MasterStruct.HallRequests = HallRequests
+						err := exec.Command("gnome-terminal", "--", "go", "run", "../main.go", "master", "isolated").Run()
+						fmt.Println(err)
+						//Send masterstruct / mergestruct
 					}
 				}
 
 			} else if Peerlist.Peers[0] == MyID { //I am master, start new master
 				MasterStruct.CurrentMasterID = MyID
-				err := exec.Command("gnome-terminal", "--", "go", "run", "../main.go", "master").Run()
+				err := exec.Command("gnome-terminal", "--", "go", "run", "../main.go", "master", "notIsolated").Run()
 				fmt.Println(err)
 
 				go func(MasterStruct types.MasterStruct) {
@@ -212,8 +217,13 @@ func main() {
 			//Check for last floor in MasterStruct
 			//Send can move if newfloor != masterstruct.floor
 			//Stop timer
+			fmt.Println("Current floor: ")
+			fmt.Println(a)
 			if a != MasterStruct.ElevStates[MyID].Floor {
+				fmt.Println("Stopping timer, case floor")
 				UnableToMoveTimer.Stop()
+				UnAbleToMoveTimerStarted = false
+				UnableToMoveCh <- types.UnableToMove{ID: MyID, UnableToMove: false}
 			}
 			floorEvent := types.SlaveFloor{ID: MyID, NewFloor: a}
 			slaveFloorTx <- floorEvent
@@ -252,7 +262,10 @@ func main() {
 		case a := <-masterMotorDirRx:
 			if a.ID == MyID && a.MasterID == MasterStruct.CurrentMasterID {
 				//Start timer if move
+				fmt.Println("UnabletoMoveTimer value: ")
+				fmt.Println(UnAbleToMoveTimerStarted)
 				if a.Motordir != "stop" && !UnAbleToMoveTimerStarted {
+					fmt.Println("UnableToMoveTimer started")
 					UnableToMoveTimer.Stop()
 					UnableToMoveTimer.Reset(3 * time.Second)
 					UnAbleToMoveTimerStarted = true
@@ -269,6 +282,7 @@ func main() {
 				}
 			}
 		case <-UnableToMoveTimer.C:
+			fmt.Println("UnableToMove sent")
 			UnableToMoveCh <- types.UnableToMove{ID: MyID, UnableToMove: true}
 
 		case a := <-masterSetOrderLight:

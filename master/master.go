@@ -75,36 +75,44 @@ func MasterFindNextAction(
 }
 
 func MergeMasterStructs(MasterStruct types.MasterStruct, ReceivedMergeStruct types.MasterStruct) types.MasterStruct {
-	NewMasterStruct := MasterStruct
+	//Check if Received can have multiple elevstate
 	MasterHallRequests := MasterStruct.HallRequests
 	ReceivedHallRequests := ReceivedMergeStruct.HallRequests
 	ReceivedID := ReceivedMergeStruct.CurrentMasterID
-	ReceivedStates := ReceivedMergeStruct.ElevStates[ReceivedID]
+	ReceivedState := ReceivedMergeStruct.ElevStates[ReceivedID]
+	MasterStruct.MySlaves = AppendNoDuplicates(MasterStruct.MySlaves, ReceivedID)
+	MasterStruct.Isolated = false
+	if entry, ok := MasterStruct.ElevStates[ReceivedID]; ok {
+		for i := 0; i < elevio.NumFloors; i++ {
+			entry.CabRequests[i] = MasterStruct.ElevStates[ReceivedID].CabRequests[i] || ReceivedState.CabRequests[i]
+		}
+		entry.Behaviour = ReceivedState.Behaviour
+		entry.Dirn = ReceivedState.Dirn
+		entry.Floor = ReceivedState.Floor
+		MasterStruct.ElevStates[ReceivedID] = entry
+	} else {
+		MasterStruct.ElevStates[ReceivedID] = ReceivedState
+	}
 	for i := 0; i < elevio.NumFloors; i++ {
 		for j := 0; j < elevio.NumButtonTypes-1; j++ {
-			NewMasterStruct.HallRequests[i][j] = MasterHallRequests[i][j] || ReceivedHallRequests[i][j]
-		}
-		if entry, ok := MasterStruct.ElevStates[ReceivedID]; ok {
-			entry.CabRequests[i] = MasterStruct.ElevStates[ReceivedID].CabRequests[i] || ReceivedStates.CabRequests[i]
-			entry.Behaviour = ReceivedStates.Behaviour
-			entry.Dirn = ReceivedStates.Dirn
-			entry.Floor = ReceivedStates.Floor
-			NewMasterStruct.ElevStates[ReceivedID] = entry
+			MasterStruct.HallRequests[i][j] = MasterHallRequests[i][j] || ReceivedHallRequests[i][j]
 		}
 	}
-	return NewMasterStruct
+	return MasterStruct
 }
 
-func RemoveDuplicates(MySlaves []string) []string {
-	inResult := make(map[string]bool)
-	var result []string
-	for _, str := range MySlaves {
-		if _, ok := inResult[str]; !ok {
-			inResult[str] = true
-			result = append(result, str)
+func AppendNoDuplicates(MySlaves []string, Peer string) []string {
+	duplicate := false
+	for _, slave := range MySlaves {
+		if Peer == slave {
+			duplicate = true
+			break
 		}
 	}
-	return result
+	if !duplicate {
+		MySlaves = append(MySlaves, Peer)
+	}
+	return MySlaves
 }
 
 func DeleteLostPeer(MySlaves []string, LostPeers string) []string {
@@ -115,4 +123,18 @@ func DeleteLostPeer(MySlaves []string, LostPeers string) []string {
 		}
 	}
 	return UpdatedMySlaves
+}
+
+func ShouldStayMaster(CurrentMaster string, NextInLine string, MasterIsolated bool, ReceivedIsolated bool) bool {
+	if (MasterIsolated && ReceivedIsolated) || (!MasterIsolated && !ReceivedIsolated) {
+		if NextInLine == CurrentMaster {
+			return true
+		} else {
+			return false
+		}
+	} else if !MasterIsolated && ReceivedIsolated {
+		return true
+	} else {
+		return false
+	}
 }

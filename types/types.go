@@ -64,7 +64,7 @@ type MasterStruct struct {
 	CurrentMasterID string
 	MySlaves        []string
 	Isolated        bool
-	AlreadyExists   bool
+	Initialized     bool
 	PeerList        peers.PeerUpdate
 	HallRequests    [][elevio.NumButtonTypes - 1]bool
 	ElevStates      map[string]elevator.Elev

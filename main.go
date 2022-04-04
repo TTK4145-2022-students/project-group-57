@@ -20,20 +20,8 @@ import (
 	"time"
 )
 
-//Deal with obstr and stopped elev
-//Msg from slave to master (can't move)(ID, bool)
-//Master receives this signal -> remove slave from MySlaves
-//-> this slave is no longer part of hra input
-//Send bool from slave when obstr changes
-//
-
-//Motorstop
-//Slave Receives direction from master
-//If floor doesn't change (for a given time) -> can't move
-//remove slave from Myslaves
-
-//Start timer when new action reveived
-//stop timer when
+//Single elevator can have info from multiple elevs in its masterstruct
+//two cases
 
 func main() {
 
@@ -74,6 +62,7 @@ func main() {
 	var NewPeerList peers.PeerUpdate
 
 	initArg := os.Args[1]
+	isolatedArg := os.Args[2]
 
 	fmt.Println()
 	fmt.Println()
@@ -83,17 +72,30 @@ func main() {
 
 	var MasterStruct types.MasterStruct
 	MasterStruct.ElevStates = map[string]elevator.Elev{}
-	MasterStruct.AlreadyExists = false
+	MasterStruct.Initialized = false
+
 	if initArg == "init" {
+		//start timer
+		//Wait for initstruct from slave
+		//if timer out -> ded
+		//send struct to mastermergesend
+		//ded
+
 		SlaveID := os.Args[2]
 		CurrentFloor := os.Args[3]
 		fmt.Println(SlaveID)
 		fmt.Println(CurrentFloor)
-		fmt.Println("fake master")
-		var e elevator.Elev
-		e = fsm.UnInitializedElev(e)
-		MasterStruct.ElevStates[SlaveID] = e
-		MasterStruct.MySlaves = []string{SlaveID}
+		fmt.Println("init master")
+		MasterStruct = types.MasterStruct{
+			CurrentMasterID: SlaveID,
+			Isolated:        true,  //keep one of these?
+			Initialized:     false, //keep one of these?
+			PeerList:        peers.PeerUpdate{},
+			HallRequests:    [][2]bool{{false, false}, {false, false}, {false, false}, {false, false}},
+			MySlaves:        []string{SlaveID},
+			ElevStates:      map[string]elevator.Elev{},
+		}
+		MasterStruct.ElevStates[SlaveID] = fsm.UnInitializedElev()
 		fmt.Println(MasterStruct)
 		if entry, ok := MasterStruct.ElevStates[SlaveID]; ok {
 			fmt.Print("entry")
@@ -105,7 +107,7 @@ func main() {
 		//Send for a longer time?
 		//
 		for i := 0; i < 5; i++ {
-			MasterMergeSend <- MasterStruct
+			MasterMergeSend <- MasterStruct //Init false
 			time.Sleep(300 * time.Millisecond)
 		}
 		fmt.Println("Time to kill")
@@ -113,81 +115,71 @@ func main() {
 	}
 
 	MasterStruct = <-MasterInitStruct
+	MasterStruct.Initialized = true
 
-	if !MasterStruct.AlreadyExists {
-		//Check out other possibilities, can be removed if we find another way to check if empty struct
-
-		MasterStruct = types.MasterStruct{
-			CurrentMasterID: MasterStruct.CurrentMasterID,
-			Isolated:        false,
-			AlreadyExists:   true,
-			PeerList:        NewPeerList,
-			MySlaves:        []string{MasterStruct.CurrentMasterID},
-			HallRequests:    [][2]bool{{false, false}, {false, false}, {false, false}, {false, false}},
-			ElevStates:      MasterStruct.ElevStates,
-		}
-
+	if isolatedArg == "isolated" {
+		go func(MasterStruct types.MasterStruct) {
+			for i := 0; i < 5; i++ {
+				MasterMergeSend <- MasterStruct
+				time.Sleep(300 * time.Millisecond)
+			}
+		}(MasterStruct)
 	}
-
-	MasterStruct.AlreadyExists = true
 
 	for {
 		select {
 		case a := <-UnableToMoveCh:
+			fmt.Println("UnableToMove received, value: ")
+			fmt.Println(a.UnableToMove)
 			if a.UnableToMove {
 				MasterStruct.MySlaves = master.DeleteLostPeer(MasterStruct.MySlaves, a.ID)
 			} else {
-				MasterStruct.MySlaves = append(MasterStruct.MySlaves, a.ID)
+				MasterStruct.MySlaves = master.AppendNoDuplicates(MasterStruct.MySlaves, a.ID)
 			}
+			NewEvent <- MasterStruct
 
 		case <-time.After(interval):
 			MasterMsg <- MasterStruct
 
 		case ReceivedMergeStruct := <-MasterMergeReceive:
 			fmt.Println("Case ReceivedMasterStruct")
-			if !ReceivedMergeStruct.AlreadyExists { //Existing master, receiving initstruct from initmaster
-				for k := range ReceivedMergeStruct.ElevStates { //Single slaveID
-					ReceivedID := k
-					if entry, ok := ReceivedMergeStruct.ElevStates[ReceivedID]; ok { //Keeping floor & cab from receivedStruct
-						entry.Floor = ReceivedMergeStruct.ElevStates[ReceivedID].Floor
-						entry.CabRequests = MasterStruct.ElevStates[ReceivedID].CabRequests
-						MasterStruct.ElevStates[ReceivedID] = entry
-						MasterStruct.MySlaves = append(MasterStruct.MySlaves, k) //APPEND WITHOUT DUPLICATES MAKE FUNCTION
-						MasterStruct.MySlaves = master.RemoveDuplicates(MasterStruct.MySlaves)
-					} //ReceivedID exists in MasterStruct
-				}
+			fmt.Println("Received: ")
+			fmt.Println(ReceivedMergeStruct)
+			fmt.Println("Current masterstruct: ")
+			fmt.Println(MasterStruct)
+
+			var NextInLine string
+			if len(ReceivedMergeStruct.PeerList.Peers) < 2 {
+				NextInLine = MasterStruct.CurrentMasterID
+			} else {
+				NextInLine = ReceivedMergeStruct.PeerList.Peers[0]
+			}
+			if master.ShouldStayMaster(MasterStruct.CurrentMasterID, NextInLine, MasterStruct.Isolated, ReceivedMergeStruct.Isolated) {
+				MasterStruct = master.MergeMasterStructs(MasterStruct, ReceivedMergeStruct)
+				fmt.Println("Merged struct: ")
+				fmt.Println(MasterStruct)
 				HallRequests := MasterStruct.HallRequests
-				for k := range MasterStruct.ElevStates { //Merge for nonexisting/empty receivedStruct
+				for k := range MasterStruct.ElevStates {
 					CabRequests := MasterStruct.ElevStates[k].CabRequests
 					AllRequests := requests.RequestsAppendHallCab(HallRequests, CabRequests)
 					SetOrderLight := types.SetOrderLight{MasterID: MasterStruct.CurrentMasterID, ID: k, LightOn: AllRequests}
 					masterSetOrderLight <- SetOrderLight
 				}
 			} else {
-				if !MasterStruct.Isolated {
-					if ReceivedMergeStruct.Isolated {
-						NewMasterID := ReceivedMergeStruct.PeerList.Peers[0]
-						if NewMasterID == MasterStruct.CurrentMasterID {
-							MasterStruct.MySlaves = append(MasterStruct.MySlaves, ReceivedMergeStruct.PeerList.Peers...)
-							MasterStruct = master.MergeMasterStructs(MasterStruct, ReceivedMergeStruct)
-						} else {
-							for i := 0; i < 10; i++ {
-								MasterMergeSend <- MasterStruct
-								time.Sleep(100 * time.Millisecond)
-							}
-							os.Exit(3)
-						}
-					} else {
-						MasterStruct.MySlaves = append(MasterStruct.MySlaves, ReceivedMergeStruct.PeerList.Peers...)
-						MasterStruct = master.MergeMasterStructs(MasterStruct, ReceivedMergeStruct)
-					}
+				for i := 0; i < 5; i++ {
+					MasterMergeSend <- MasterStruct
+					time.Sleep(300 * time.Millisecond)
 				}
+				fmt.Println("Time to kill")
+				os.Exit(99)
 			}
+
 			NewEvent <- MasterStruct
 
 		case NewPeerList = <-PeerUpdateCh: //Use only for deleting, not adding new
 			fmt.Println("Peerlist")
 			fmt.Println(NewPeerList)
+			MasterStruct.PeerList = NewPeerList
 			if len(NewPeerList.Lost) != 0 {
 				for k := range NewPeerList.Lost {
 					MasterStruct.MySlaves = master.DeleteLostPeer(MasterStruct.MySlaves, NewPeerList.Lost[k])

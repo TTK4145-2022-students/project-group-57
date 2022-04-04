@@ -33,7 +33,8 @@ func Fsm_onInitBetweenFloors(e elevator.Elev) elevator.Elev {
 	return e
 }
 
-func UnInitializedElev(e elevator.Elev) elevator.Elev {
+func UnInitializedElev() elevator.Elev {
+	var e elevator.Elev
 	e.Floor = 0
 	e.Dirn = "stop"
 	e.Behaviour = "idle"
