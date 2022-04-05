@@ -186,6 +186,8 @@ func main() {
 			NewEvent <- MasterStruct
 
 		case NewPeerList = <-PeerUpdateCh: //Use only for deleting, not adding new
+			//Periodically add slaves to myslaves from peerlist.peers
+
 			fmt.Println("Peerlist")
 			fmt.Println(NewPeerList)
 			MasterStruct.PeerList = NewPeerList

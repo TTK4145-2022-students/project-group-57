@@ -192,6 +192,7 @@ func main() {
 						e.CabRequests = CabRequests
 						MasterStruct.ElevStates[MyID] = e
 						MasterStruct.HallRequests = HallRequests
+						MasterStruct.CurrentMasterID = MyID
 						err := exec.Command("gnome-terminal", "--", "go", "run", "../main.go", "master", "isolated").Run()
 						fmt.Println(err)
 						//Send masterstruct / mergestruct
@@ -268,7 +269,7 @@ func main() {
 			}
 
 		case a := <-masterMotorDirRx:
-
+			//check where currentmasterID is set
 			if a.ID == MyID && a.MasterID == MasterStruct.CurrentMasterID {
 				//Problem: Door open, Receiving new direction while door is open
 				//->Starting unabletomovetimer
