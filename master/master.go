@@ -28,9 +28,8 @@ func MasterFindNextAction(
 			HRAInput.States[ID] = MasterStruct.ElevStates[ID]
 		}
 		jsonBytes, _ := json.Marshal(HRAInput)
-		ret, err := exec.Command("../hall_request_assigner/"+HRAExecutable, "-i", string(jsonBytes)).Output()
-		fmt.Println(err)
-		err = json.Unmarshal(ret, &HRAOutput)
+		ret, _ := exec.Command("../hall_request_assigner/"+HRAExecutable, "-i", string(jsonBytes)).Output()
+		json.Unmarshal(ret, &HRAOutput)
 
 		fmt.Printf("output: \n")
 		for k, v := range *HRAOutput {

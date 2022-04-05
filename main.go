@@ -8,6 +8,7 @@ package main
 //Check for unneccesary types
 //Rename channels, functions, variables, erthing
 //Uppercase lowercase
+//single elevator as function
 
 //Fixes
 //two masters coexist -- FIXED
@@ -19,6 +20,8 @@ package main
 //Make function masterUninitMasterStructsudo 16
 //SwitchCase on masterArgs?
 //Two elevators come from isolated
+
+//When packetloss >= 0.2 -> lights doesn't always get turned off, door doesn't always open
 import (
 	"fmt"
 	"master/Driver-go/elevio"
@@ -35,6 +38,19 @@ import (
 )
 
 func main() {
+
+	TestActiveSlaves := []string{"two", "three"}
+	TestAppendableSlave := "one"
+
+	testNewActiveSlaves := master.AppendNoDuplicates(TestActiveSlaves, TestAppendableSlave)
+	fmt.Println()
+	fmt.Println()
+	fmt.Println()
+	fmt.Println()
+	fmt.Println()
+	fmt.Println()
+	fmt.Println()
+	fmt.Println(testNewActiveSlaves)
 
 	slaveButtonRx := make(chan types.SlaveButtonEventMsg)
 	slaveFloorRx := make(chan types.SlaveFloor, 5)
@@ -151,15 +167,9 @@ func main() {
 			} else {
 				MasterStruct.MySlaves.Active = master.DeleteElementFromSlice(MasterStruct.MySlaves.Active, a.ID)
 				MasterStruct.MySlaves.Immobile = master.AppendNoDuplicates(MasterStruct.MySlaves.Immobile, a.ID)
-				fmt.Println()
-				fmt.Println()
-				fmt.Println()
-				fmt.Println()
 				fmt.Println("***********************************Deleted Slave*****************************")
 				fmt.Println(a.ID)
-				fmt.Println()
-				fmt.Println()
-				fmt.Println()
+
 			}
 			fmt.Println(MasterStruct.MySlaves.Active)
 			fmt.Println(MasterStruct.MySlaves.Immobile)
@@ -178,19 +188,18 @@ func main() {
 				PeriodicNewEventIterator++
 			}
 		case ReceivedMergeStruct := <-MasterMergeReceive:
-
-			fmt.Println("Case ReceivedMasterStruct")
-			fmt.Println("Received: ")
-			fmt.Println(ReceivedMergeStruct)
-			fmt.Println("Current masterstruct: ")
-			fmt.Println(MasterStruct)
-
-			if ReceivedMergeStruct.CurrentMasterID == MasterStruct.CurrentMasterID {
+			//Received iso from myself -> merge
+			if (ReceivedMergeStruct.CurrentMasterID == MasterStruct.CurrentMasterID) && !ReceivedMergeStruct.Isolated {
 				if ReceivedMergeStruct.ProcessID != MasterStruct.ProcessID {
 					fmt.Println("Time to kill, I am myself")
 					os.Exit(99)
 				}
 			} else {
+				fmt.Println("Case ReceivedMasterStruct")
+				fmt.Println("Received: ")
+				fmt.Println(ReceivedMergeStruct)
+				fmt.Println("Current masterstruct: ")
+				fmt.Println(MasterStruct)
 				var NextInLine string
 				if len(ReceivedMergeStruct.PeerList.Peers) < 2 {
 					NextInLine = MasterStruct.CurrentMasterID

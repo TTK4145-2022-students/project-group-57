@@ -8,8 +8,6 @@ import (
 	"time"
 )
 
-//Maybe change switch-case to something else?
-
 func SetAllLights(Allreqs [elevio.NumFloors][elevio.NumButtonTypes]bool) {
 	for floor := 0; floor < elevio.NumFloors; floor++ {
 		for btn := 0; btn < elevio.NumButtonTypes; btn++ {
@@ -105,8 +103,7 @@ func Fsm_onFloorArrival(e elevator.Elev, reqs [elevio.NumFloors][elevio.NumButto
 	return e, reqs
 }
 
-func Fsm_onDoorTimeout(e elevator.Elev,
-	reqs [elevio.NumFloors][elevio.NumButtonTypes]bool) (elevator.Elev, [elevio.NumFloors][elevio.NumButtonTypes]bool) {
+func Fsm_onDoorTimeout(e elevator.Elev, reqs [elevio.NumFloors][elevio.NumButtonTypes]bool) (elevator.Elev, [elevio.NumFloors][elevio.NumButtonTypes]bool) {
 	elevio.SetDoorOpenLamp(false)
 	switch e.Behaviour {
 	case elevator.EB_DoorOpen:

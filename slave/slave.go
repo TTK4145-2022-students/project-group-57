@@ -63,9 +63,10 @@ func main() {
 
 	//INIT
 	var Peerlist peers.PeerUpdate
-	InitLightsOff := [4][3]bool{}
-	fsm.SetAllLights(InitLightsOff)
+	InitTurnLightsOff := [4][3]bool{}
+	fsm.SetAllLights(InitTurnLightsOff)
 	elevio.SetDoorOpenLamp(false)
+
 	floor := elevio.GetFloor()
 	if floor == -1 {
 		elevio.SetMotorDirection(elevio.MD_Down)
@@ -73,13 +74,10 @@ func main() {
 	}
 	elevio.SetMotorDirection(elevio.MD_Stop)
 	elevio.SetFloorIndicator(floor)
-	CurrentFloor := strconv.Itoa(floor)
 
-	err := exec.Command("gnome-terminal", "--", "go", "run", "../main.go", "init", MyID, "isolated", CurrentFloor).Run()
-	fmt.Println(err)
+	exec.Command("gnome-terminal", "--", "go", "run", "../main.go", "init", MyID, "isolated", strconv.Itoa(floor)).Run()
 
 	MySlaves := types.MySlaves{Active: []string{MyID}}
-
 	MasterStruct := types.MasterStruct{
 		CurrentMasterID: MyID,
 		Isolated:        false,
@@ -94,26 +92,57 @@ func main() {
 	e.Floor = floor
 	MasterStruct.ElevStates[MyID] = e
 
-	//MasterStruct.CurrentMasterID = MyID
+	MasterTimeout := 5 * time.Second
+	doorTimeout := 3 * time.Second
+	AbleToMoveTimeout := 3 * time.Second
 
-	doorTimer := time.NewTimer(100 * time.Second) //Trouble initializing timer like this, maybe
+	doorTimer := time.NewTimer(doorTimeout)
+	doorTimer.Stop()
 	doorIsOpen := false
 	obstructionActive := false
-	AbleToMoveTimer := time.NewTimer(10 * time.Second)
+
+	AbleToMoveTimer := time.NewTimer(AbleToMoveTimeout)
+	AbleToMoveTimer.Stop()
 	AbleToMoveTimerStarted := false
-	MasterTimeout := 5 * time.Second
+
 	MasterTimer := time.NewTimer(MasterTimeout)
 
 	for {
 		select {
-		case NewPeerlist := <-PeerUpdateCh:
-			Peerlist = NewPeerlist
+		case a := <-drv_buttons:
+			buttonEvent := types.SlaveButtonEventMsg{
+				ID:        MyID,
+				Btn_floor: a.Floor,
+				Btn_type:  int(a.Button)}
+			slaveButtonTx <- buttonEvent
 
-		case a := <-NewMasterIDCh:
-
-			if a.SlaveID == MyID {
-				MasterStruct.CurrentMasterID = a.NewMasterID
+		case a := <-drv_floors:
+			if a != MasterStruct.ElevStates[MyID].Floor {
+				fmt.Println("Stopping timer, case floor")
+				AbleToMoveTimer.Stop()
+				AbleToMoveTimerStarted = false
+				AbleToMoveCh <- types.AbleToMove{ID: MyID, AbleToMove: true}
 			}
+			elevio.SetFloorIndicator(a)
+			elevio.SetMotorDirection(elevio.MD_Stop)
+			floorEvent := types.SlaveFloor{ID: MyID, NewFloor: a}
+			slaveFloorTx <- floorEvent
+
+		case a := <-drv_obstr:
+			if a {
+				obstructionActive = true
+				AbleToMoveCh <- types.AbleToMove{ID: MyID, AbleToMove: false}
+			} else {
+				obstructionActive = false
+				AbleToMoveCh <- types.AbleToMove{ID: MyID, AbleToMove: true}
+				if doorIsOpen {
+					doorTimer.Stop()
+					doorTimer.Reset(3 * time.Second)
+				}
+			}
+
+		case a := <-drv_stop:
+			fmt.Printf("%+v\n", a)
 
 		case a := <-MasterMsg:
 			if a.CurrentMasterID == MasterStruct.CurrentMasterID {
@@ -122,10 +151,17 @@ func main() {
 				MasterTimer.Reset(MasterTimeout)
 			}
 
-		case <-MasterTimer.C:
-			//Single elevator
+		case a := <-NewMasterIDCh:
+			if a.SlaveID == MyID {
+				MasterStruct.CurrentMasterID = a.NewMasterID
+			}
 
-			if len(Peerlist.Peers) == 0 { //must be zero
+		case NewPeerlist := <-PeerUpdateCh:
+			Peerlist = NewPeerlist
+
+		case <-MasterTimer.C:
+			if len(Peerlist.Peers) == 0 { //SINGLE ELEVATOR
+				fmt.Println("SingleElevator")
 				HallRequests := MasterStruct.HallRequests
 				if len(HallRequests) == 0 {
 					HallRequests = [][2]bool{{false, false}, {false, false}, {false, false}, {false, false}}
@@ -145,7 +181,12 @@ func main() {
 				if e.Floor == -1 {
 					e = fsm.Fsm_onInitBetweenFloors(e)
 				}
-				for len(Peerlist.Peers) == 0 { //must be zero
+
+				NextAction := requests.RequestsNextAction(e, SingleElevRequests)
+				elevio.SetMotorDirection(NextAction.Dirn)
+				e.Behaviour = NextAction.Behaviour
+				e.Dirn = elevio.MotorDirToString(NextAction.Dirn)
+				for len(Peerlist.Peers) == 0 {
 					select {
 					case a := <-drv_buttons:
 						elevio.SetButtonLamp(a.Button, a.Floor, true)
@@ -189,23 +230,25 @@ func main() {
 						MasterStruct.ElevStates[MyID] = e
 						MasterStruct.HallRequests = HallRequests
 						MasterStruct.CurrentMasterID = MyID
-						err := exec.Command("gnome-terminal", "--", "go", "run", "../main.go", "master", MyID, "isolated").Run()
-						fmt.Println(err)
+						if obstructionActive {
+							AbleToMoveCh <- types.AbleToMove{ID: MyID, AbleToMove: false}
+						}
+						exec.Command("gnome-terminal", "--", "go", "run", "../main.go", "master", MyID, "isolated").Run()
 						MasterTimer.Stop()
 						MasterTimer.Reset(MasterTimeout)
-						go func(MasterStruct types.MasterStruct) {
+						IsolatedMasterStruct := MasterStruct
+						go func() {
 							for i := 0; i < 10; i++ {
-								MasterInitStruct <- MasterStruct
+								MasterInitStruct <- IsolatedMasterStruct
 								time.Sleep(100 * time.Millisecond)
 							}
-						}(MasterStruct)
+						}()
 					}
 				}
 
 			} else if Peerlist.Peers[0] == MyID { //I am master, start new master
 				MasterStruct.CurrentMasterID = MyID
-				err := exec.Command("gnome-terminal", "--", "go", "run", "../main.go", "master", MyID, "notIsolated").Run()
-				fmt.Println(err)
+				exec.Command("gnome-terminal", "--", "go", "run", "../main.go", "master", MyID, "notIsolated").Run()
 				MasterTimer.Stop()
 				MasterTimer.Reset(MasterTimeout)
 
@@ -220,59 +263,8 @@ func main() {
 				MasterTimer.Reset(MasterTimeout)
 			}
 
-		case a := <-drv_buttons:
-			buttonEvent := types.SlaveButtonEventMsg{
-				ID:        MyID,
-				Btn_floor: a.Floor,
-				Btn_type:  int(a.Button)}
-			slaveButtonTx <- buttonEvent
-
-		case a := <-drv_floors:
-			//Check for last floor in MasterStruct
-			//Send can move if newfloor != masterstruct.floor
-			//Stop timer
-			fmt.Println("Current floor: ")
-			fmt.Println(a)
-			if a != MasterStruct.ElevStates[MyID].Floor {
-				fmt.Println("Stopping timer, case floor")
-				AbleToMoveTimer.Stop()
-				AbleToMoveTimerStarted = false
-				AbleToMoveCh <- types.AbleToMove{ID: MyID, AbleToMove: true}
-			}
-			floorEvent := types.SlaveFloor{ID: MyID, NewFloor: a}
-			slaveFloorTx <- floorEvent
-			elevio.SetFloorIndicator(a)
-			elevio.SetMotorDirection(elevio.MD_Stop)
-
-		case a := <-drv_obstr:
-			//Send can't/can move
-			if a {
-				obstructionActive = true
-				if doorIsOpen {
-					AbleToMoveCh <- types.AbleToMove{ID: MyID, AbleToMove: false}
-				}
-			} else {
-				obstructionActive = false
-				AbleToMoveCh <- types.AbleToMove{ID: MyID, AbleToMove: true}
-				if doorIsOpen {
-					doorTimer.Stop()
-					doorTimer.Reset(3 * time.Second)
-				}
-			}
-
-		case a := <-drv_stop:
-			fmt.Printf("%+v\n", a)
-			for f := 0; f < numFloors; f++ {
-				for b := elevio.ButtonType(0); b < 3; b++ {
-					elevio.SetButtonLamp(b, f, false)
-				}
-			}
-
 		case a := <-masterMotorDirRx:
 			if a.ID == MyID && a.MasterID == MasterStruct.CurrentMasterID {
-
-				//if "stop" stop timer
-
 				if a.Motordir != "stop" && !AbleToMoveTimerStarted && !doorIsOpen {
 					fmt.Println("UnableToMoveTimer started")
 					AbleToMoveTimer.Stop()
@@ -293,16 +285,7 @@ func main() {
 				}
 			}
 		case <-AbleToMoveTimer.C:
-			fmt.Println()
-			fmt.Println()
-			fmt.Println()
-			fmt.Println()
 			fmt.Println("***********************************UnableToMove sent*****************************")
-			fmt.Println()
-			fmt.Println()
-			fmt.Println()
-			fmt.Println()
-
 			AbleToMoveCh <- types.AbleToMove{ID: MyID, AbleToMove: false}
 			AbleToMoveTimerStarted = false
 
@@ -320,6 +303,11 @@ func main() {
 					elevio.SetDoorOpenLamp(a.SetDoorOpen)
 					elevio.SetMotorDirection(0)
 					if a.SetDoorOpen {
+						if obstructionActive {
+							AbleToMoveCh <- types.AbleToMove{ID: MyID, AbleToMove: false}
+							AbleToMoveTimer.Stop()
+							AbleToMoveTimerStarted = false
+						}
 						doorIsOpen = true
 						AbleToMoveTimer.Stop()
 						AbleToMoveTimerStarted = false
