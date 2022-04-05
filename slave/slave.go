@@ -17,7 +17,7 @@ import (
 func main() {
 
 	numFloors := 4
-	elevio.Init("localhost:15657", numFloors)
+	elevio.Init("localhost:15661", numFloors)
 	//Can use localIP, but not when testing on single computer
 	MyID := "one"
 
@@ -37,7 +37,7 @@ func main() {
 	MasterInitStruct := make(chan types.MasterStruct)
 	NewMasterIDCh := make(chan types.NewMasterID)
 	PeerUpdateCh := make(chan peers.PeerUpdate)
-	UnableToMoveCh := make(chan types.UnableToMove)
+	AbleToMoveCh := make(chan types.AbleToMove)
 
 	go elevio.PollButtons(drv_buttons)
 	go elevio.PollFloorSensor(drv_floors)
@@ -48,18 +48,18 @@ func main() {
 	go broadcast.Transmitter(16514, slaveFloorTx)
 	go broadcast.Transmitter(16521, slaveDoorOpened)
 	go broadcast.Transmitter(16527, MasterInitStruct)
-	go broadcast.Transmitter(16528, UnableToMoveCh)
-	go peers.Transmitter(16529, MyID, transmitEnable)
+	go broadcast.Transmitter(16528, AbleToMoveCh)
 
 	go broadcast.Receiver(16515, masterMotorDirRx)
 	go broadcast.Receiver(16518, masterSetOrderLight)
 	go broadcast.Receiver(16520, commandDoorOpen)
 	go broadcast.Receiver(16523, MasterMsg)
 	go broadcast.Receiver(16524, NewMasterIDCh)
+
+	go peers.Transmitter(16529, MyID, transmitEnable)
 	go peers.Receiver(16529, PeerUpdateCh)
 
 	//INIT
-
 	var Peerlist peers.PeerUpdate
 	InitLightsOff := [4][3]bool{}
 	fsm.SetAllLights(InitLightsOff)
@@ -83,7 +83,7 @@ func main() {
 		PeerList:        peers.PeerUpdate{},
 		HallRequests:    [][2]bool{{false, false}, {false, false}, {false, false}, {false, false}},
 		ElevStates:      map[string]elevator.Elev{},
-		MySlaves:        []string{MyID},
+		ActiveSlaves:    []string{MyID},
 	}
 
 	e := fsm.UnInitializedElev()
@@ -93,13 +93,12 @@ func main() {
 	//MasterStruct.CurrentMasterID = MyID
 
 	doorTimer := time.NewTimer(100 * time.Second) //Trouble initializing timer like this, maybe
-	UnableToMoveTimer := time.NewTimer(100 * time.Second)
 	doorIsOpen := false
 	obstructionActive := false
+	AbleToMoveTimer := time.NewTimer(100 * time.Second)
+	AbleToMoveTimerStarted := false
 	MasterTimeout := 5 * time.Second
 	MasterTimer := time.NewTimer(MasterTimeout)
-	UnAbleToMoveTimerStarted := false
-	UnAbleToMoveIterator := 0
 
 	for {
 		select {
@@ -117,13 +116,6 @@ func main() {
 				MasterStruct = a
 				MasterTimer.Stop()
 				MasterTimer.Reset(MasterTimeout)
-			}
-			if UnAbleToMoveIterator == 3 { //grisete
-				UnAbleToMoveTimerStarted = false
-				UnableToMoveCh <- types.UnableToMove{ID: MyID, UnableToMove: false}
-				UnAbleToMoveIterator = 0
-			} else {
-				UnAbleToMoveIterator++
 			}
 
 		case <-MasterTimer.C:
@@ -230,30 +222,25 @@ func main() {
 			fmt.Println(a)
 			if a != MasterStruct.ElevStates[MyID].Floor {
 				fmt.Println("Stopping timer, case floor")
-				UnableToMoveTimer.Stop()
-				UnAbleToMoveTimerStarted = false
-				UnableToMoveCh <- types.UnableToMove{ID: MyID, UnableToMove: false}
+				AbleToMoveTimer.Stop()
+				AbleToMoveTimerStarted = false
+				AbleToMoveCh <- types.AbleToMove{ID: MyID, AbleToMove: true}
 			}
 			floorEvent := types.SlaveFloor{ID: MyID, NewFloor: a}
 			slaveFloorTx <- floorEvent
 			elevio.SetFloorIndicator(a)
 			elevio.SetMotorDirection(elevio.MD_Stop)
-			if a == numFloors-1 {
-				elevio.SetMotorDirection(elevio.MD_Stop)
-			} else if a == 0 {
-				elevio.SetMotorDirection(elevio.MD_Stop)
-			}
 
 		case a := <-drv_obstr:
 			//Send can't/can move
 			if a {
 				obstructionActive = true
 				if doorIsOpen {
-					UnableToMoveCh <- types.UnableToMove{ID: MyID, UnableToMove: a}
+					AbleToMoveCh <- types.AbleToMove{ID: MyID, AbleToMove: false}
 				}
 			} else {
 				obstructionActive = false
-				UnableToMoveCh <- types.UnableToMove{ID: MyID, UnableToMove: a}
+				AbleToMoveCh <- types.AbleToMove{ID: MyID, AbleToMove: true}
 				if doorIsOpen {
 					doorTimer.Stop()
 					doorTimer.Reset(3 * time.Second)
@@ -269,22 +256,13 @@ func main() {
 			}
 
 		case a := <-masterMotorDirRx:
-			//check where currentmasterID is set
 			if a.ID == MyID && a.MasterID == MasterStruct.CurrentMasterID {
-				//Problem: Door open, Receiving new direction while door is open
-				//->Starting unabletomovetimer
 
-				fmt.Println("UnabletoMoveTimer value: ")
-				fmt.Println(UnAbleToMoveTimerStarted)
-				if a.Motordir != "stop" && !UnAbleToMoveTimerStarted && !doorIsOpen {
+				if a.Motordir != "stop" && !AbleToMoveTimerStarted && !doorIsOpen {
 					fmt.Println("UnableToMoveTimer started")
-					UnableToMoveTimer.Stop()
-					UnableToMoveTimer.Reset(3 * time.Second)
-					UnAbleToMoveTimerStarted = true
-				} else if a.Motordir == "stop" && UnAbleToMoveTimerStarted {
-					UnableToMoveTimer.Stop()
-					UnAbleToMoveTimerStarted = false
-					UnableToMoveCh <- types.UnableToMove{ID: MyID, UnableToMove: true}
+					AbleToMoveTimer.Stop()
+					AbleToMoveTimer.Reset(3 * time.Second)
+					AbleToMoveTimerStarted = true
 				}
 				floor := elevio.GetFloor()
 				if (floor == elevio.NumFloors-1 && a.Motordir == "up") ||
@@ -297,7 +275,7 @@ func main() {
 					}
 				}
 			}
-		case <-UnableToMoveTimer.C:
+		case <-AbleToMoveTimer.C:
 			fmt.Println()
 			fmt.Println()
 			fmt.Println()
@@ -308,8 +286,8 @@ func main() {
 			fmt.Println()
 			fmt.Println()
 
-			UnableToMoveCh <- types.UnableToMove{ID: MyID, UnableToMove: true}
-			UnAbleToMoveTimerStarted = false
+			AbleToMoveCh <- types.AbleToMove{ID: MyID, AbleToMove: false}
+			AbleToMoveTimerStarted = false
 
 		case a := <-masterSetOrderLight:
 			if a.ID == MyID && a.MasterID == MasterStruct.CurrentMasterID {
@@ -320,21 +298,16 @@ func main() {
 
 		case a := <-commandDoorOpen:
 			if a.MasterID == MasterStruct.CurrentMasterID {
-				fmt.Println("ID: ")
-				fmt.Println(a.ID)
-				fmt.Println("SetDoorOpen: ")
-				fmt.Println(a.SetDoorOpen)
-				fmt.Println("doorIsOpen: ")
-				fmt.Println(doorIsOpen)
 				if a.ID == MyID && !doorIsOpen && elevio.GetFloor() != -1 {
 					elevio.SetDoorOpenLamp(a.SetDoorOpen)
 					elevio.SetMotorDirection(0)
 					if a.SetDoorOpen {
 						doorIsOpen = true
+						AbleToMoveTimer.Stop()
+						AbleToMoveTimerStarted = false
 						doorTimer.Stop()
 						doorTimer.Reset(3 * time.Second)
 					}
-					fmt.Println("Sending back")
 					slaveDoorOpened <- a
 				}
 			}

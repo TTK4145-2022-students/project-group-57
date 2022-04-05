@@ -40,7 +40,7 @@ func main() {
 	MasterMergeReceive := make(chan types.MasterStruct, 3)
 
 	NewMasterIDCh := make(chan types.NewMasterID)
-	UnableToMoveCh := make(chan types.UnableToMove, 3)
+	AbleToMoveCh := make(chan types.AbleToMove, 3)
 
 	go broadcast.Receiver(16513, slaveButtonRx)
 	go broadcast.Receiver(16514, slaveFloorRx)
@@ -54,11 +54,12 @@ func main() {
 	go broadcast.Transmitter(16524, NewMasterIDCh)
 	go broadcast.Transmitter(16585, MasterMergeSend)
 	go broadcast.Receiver(16585, MasterMergeReceive)
-	go broadcast.Receiver(16528, UnableToMoveCh)
+	go broadcast.Receiver(16528, AbleToMoveCh)
 
 	go peers.Receiver(16529, PeerUpdateCh)
 
-	const interval = 500 * time.Millisecond
+	const interval = 100 * time.Millisecond
+	PeriodicNewEventIterator := 0
 	var NewPeerList peers.PeerUpdate
 
 	initArg := os.Args[1]
@@ -75,12 +76,6 @@ func main() {
 	MasterStruct.Initialized = false
 
 	if initArg == "init" {
-		//start timer
-		//Wait for initstruct from slave
-		//if timer out -> ded
-		//send struct to mastermergesend
-		//ded
-
 		SlaveID := os.Args[2]
 		CurrentFloor := os.Args[3]
 		fmt.Println(SlaveID)
@@ -92,16 +87,14 @@ func main() {
 			Initialized:     false, //keep one of these?
 			PeerList:        peers.PeerUpdate{},
 			HallRequests:    [][2]bool{{false, false}, {false, false}, {false, false}, {false, false}},
-			MySlaves:        []string{SlaveID},
+			ActiveSlaves:    []string{SlaveID},
 			ElevStates:      map[string]elevator.Elev{},
 		}
 		MasterStruct.ElevStates[SlaveID] = fsm.UnInitializedElev()
-		fmt.Println(MasterStruct)
 		if entry, ok := MasterStruct.ElevStates[SlaveID]; ok {
 			fmt.Print("entry")
 			entry.Floor, _ = strconv.Atoi(CurrentFloor)
 			MasterStruct.ElevStates[SlaveID] = entry
-			fmt.Println(MasterStruct)
 		}
 		//Sends to already existing master
 		//Send for a longer time?
@@ -128,11 +121,13 @@ func main() {
 
 	for {
 		select {
-		case a := <-UnableToMoveCh:
+		case a := <-AbleToMoveCh:
 			fmt.Println("UnableToMove received, value: ")
-			fmt.Println(a.UnableToMove)
-			if a.UnableToMove {
-				MasterStruct.MySlaves = master.DeleteLostPeer(MasterStruct.MySlaves, a.ID)
+			fmt.Println(a.AbleToMove)
+			if a.AbleToMove {
+				MasterStruct.ActiveSlaves = master.AppendNoDuplicates(MasterStruct.ActiveSlaves, a.ID)
+			} else {
+				MasterStruct.ActiveSlaves = master.DeleteLostPeer(MasterStruct.ActiveSlaves, a.ID)
 				fmt.Println()
 				fmt.Println()
 				fmt.Println()
@@ -142,14 +137,20 @@ func main() {
 				fmt.Println()
 				fmt.Println()
 				fmt.Println()
-			} else {
-				MasterStruct.MySlaves = master.AppendNoDuplicates(MasterStruct.MySlaves, a.ID)
 			}
 			NewEvent <- MasterStruct
 
 		case <-time.After(interval):
+			//interval = 100ms
 			MasterMsg <- MasterStruct
-
+			if PeriodicNewEventIterator == 10 {
+				PeriodicNewEventIterator = 0
+				fmt.Println("ActiveSlaves: ")
+				fmt.Println(MasterStruct.ActiveSlaves)
+				NewEvent <- MasterStruct
+			} else {
+				PeriodicNewEventIterator++
+			}
 		case ReceivedMergeStruct := <-MasterMergeReceive:
 			fmt.Println("Case ReceivedMasterStruct")
 			fmt.Println("Received: ")
@@ -193,9 +194,9 @@ func main() {
 			MasterStruct.PeerList = NewPeerList
 			if len(NewPeerList.Lost) != 0 {
 				for k := range NewPeerList.Lost {
-					MasterStruct.MySlaves = master.DeleteLostPeer(MasterStruct.MySlaves, NewPeerList.Lost[k])
+					MasterStruct.ActiveSlaves = master.DeleteLostPeer(MasterStruct.ActiveSlaves, NewPeerList.Lost[k])
 				}
-				fmt.Println(MasterStruct.MySlaves)
+				fmt.Println(MasterStruct.ActiveSlaves)
 				NewEvent <- MasterStruct
 			}
 
@@ -224,10 +225,6 @@ func main() {
 			NewEvent <- MasterStruct
 
 		case slaveMsg := <-slaveDoorOpened:
-			fmt.Println("ID: ")
-			fmt.Println(slaveMsg.ID)
-			fmt.Println("SetDoorOpen: ")
-			fmt.Println(slaveMsg.SetDoorOpen)
 			elevState := MasterStruct.ElevStates[slaveMsg.ID]
 			if slaveMsg.SetDoorOpen {
 				if entry, ok := MasterStruct.ElevStates[slaveMsg.ID]; ok {
@@ -246,10 +243,11 @@ func main() {
 			NewEvent <- MasterStruct
 
 		case a := <-NewAction:
-			//Send NewMAsterID to for all new actions (in new slave case)
-			//if extra info == NewAction.extra info
-			//Send NewMAsterIDch
+
 			NewMasterIDCh <- types.NewMasterID{SlaveID: a.ID, NewMasterID: MasterStruct.CurrentMasterID}
+
+			fmt.Println("ID")
+			fmt.Println(a.ID)
 			fmt.Println("NewAction: ")
 			fmt.Println(a.Action)
 			if entry, ok := MasterStruct.ElevStates[a.ID]; ok {
@@ -258,11 +256,8 @@ func main() {
 				MasterStruct.ElevStates[a.ID] = entry
 			}
 			if MasterStruct.ElevStates[a.ID].Behaviour == elevator.EB_DoorOpen {
-				fmt.Println("Elevator DoorOpen")
 				commandDoorOpen <- types.DoorOpen{MasterID: MasterStruct.CurrentMasterID, ID: a.ID, SetDoorOpen: true}
 			} else {
-				fmt.Println("Master give Direction:")
-				fmt.Println(a.Action.Dirn)
 				masterCommandMD <- types.MasterCommand{MasterID: MasterStruct.CurrentMasterID, ID: a.ID, Motordir: elevio.MotorDirToString(a.Action.Dirn)}
 			}
 		}

@@ -55,14 +55,14 @@ type NewAction struct {
 	Action requests.Action
 }
 
-type UnableToMove struct {
-	ID           string
-	UnableToMove bool
+type AbleToMove struct {
+	ID         string
+	AbleToMove bool
 }
 
 type MasterStruct struct {
 	CurrentMasterID string
-	MySlaves        []string
+	ActiveSlaves    []string
 	Isolated        bool
 	Initialized     bool
 	PeerList        peers.PeerUpdate
