@@ -299,22 +299,26 @@ func main() {
 		case a := <-commandDoorOpen:
 			//Icnlude can't move somehow
 			if a.MasterID == MasterStruct.CurrentMasterID {
-				if a.ID == MyID && !doorIsOpen && elevio.GetFloor() != -1 {
-					elevio.SetDoorOpenLamp(a.SetDoorOpen)
-					elevio.SetMotorDirection(0)
-					if a.SetDoorOpen {
-						if obstructionActive {
-							AbleToMoveCh <- types.AbleToMove{ID: MyID, AbleToMove: false}
+				if a.ID == MyID && elevio.GetFloor() != -1 {
+					if !doorIsOpen {
+						elevio.SetDoorOpenLamp(a.SetDoorOpen)
+						elevio.SetMotorDirection(0)
+						if a.SetDoorOpen {
+							if obstructionActive {
+								AbleToMoveCh <- types.AbleToMove{ID: MyID, AbleToMove: false}
+								AbleToMoveTimer.Stop()
+								AbleToMoveTimerStarted = false
+							}
+							doorIsOpen = true
 							AbleToMoveTimer.Stop()
 							AbleToMoveTimerStarted = false
+							doorTimer.Stop()
+							doorTimer.Reset(3 * time.Second)
 						}
-						doorIsOpen = true
-						AbleToMoveTimer.Stop()
-						AbleToMoveTimerStarted = false
-						doorTimer.Stop()
-						doorTimer.Reset(3 * time.Second)
+						slaveDoorOpened <- a
+					} else {
+						slaveDoorOpened <- a
 					}
-					slaveDoorOpened <- a
 				}
 			}
 

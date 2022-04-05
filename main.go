@@ -182,6 +182,22 @@ func main() {
 				PeriodicNewEventIterator = 0
 				fmt.Println("ActiveSlaves: ")
 				fmt.Println(MasterStruct.MySlaves.Active)
+				fmt.Println("Current peers: ")
+				fmt.Println(MasterStruct.PeerList.Peers)
+				for _, slave := range MasterStruct.MySlaves.Active {
+					found := false
+					for _, peer := range MasterStruct.PeerList.Peers {
+						if slave == peer {
+							found = true
+							break
+						}
+					}
+					if !found {
+						MasterStruct.MySlaves.Active = master.DeleteElementFromSlice(MasterStruct.MySlaves.Active, slave)
+						MasterStruct.MySlaves.Immobile = master.DeleteElementFromSlice(MasterStruct.MySlaves.Immobile, slave)
+					}
+				}
+
 				MasterMergeSend <- MasterStruct
 				NewEvent <- MasterStruct
 			} else {
