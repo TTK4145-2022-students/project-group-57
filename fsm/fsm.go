@@ -85,7 +85,7 @@ func Fsm_onFloorArrival(e elevator.Elev, reqs [elevio.NumFloors][elevio.NumButto
 	switch e.Behaviour {
 	case elevator.EB_Moving:
 		fmt.Println("inside case moving")
-		if requests.RequestShouldStop(e, reqs) {
+		if requests.SingleElevRequestShouldStop(e, reqs) {
 			fmt.Println("trying to stop")
 			elevio.SetMotorDirection(elevio.MD_Stop)
 			elevio.SetDoorOpenLamp(true)

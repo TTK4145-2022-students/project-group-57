@@ -66,6 +66,7 @@ type MySlaves struct {
 
 type MasterStruct struct {
 	CurrentMasterID string
+	ProcessID       int
 	MySlaves        MySlaves
 	Isolated        bool
 	Initialized     bool

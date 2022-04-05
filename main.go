@@ -1,10 +1,24 @@
 package main
 
 //Problems:
-//HallUp and HallDown in current floor, Cab in diff floor after HallUp is executed, but before HallDown is executed
-//---- Elev doesn't execute cab before HallDown
 //Concurrent map read and write
 
+//Need to check when smoothing the code:
+//Consistent use of numFloors (not the number), same with numbuttons?
+//Check for unneccesary types
+//Rename channels, functions, variables, erthing
+//Uppercase lowercase
+
+//Fixes
+//two masters coexist -- FIXED
+//Elevator receiving doorOpen in floor, but elevator has powerLoss, need to remove from activeSlaves
+//PacketLoss and disconnects
+//Fix SingleElevator?
+//MyIP instead of MyID
+//Possible processPair with slave?
+//Make function masterUninitMasterStructsudo 16
+//SwitchCase on masterArgs?
+//Two elevators come from isolated
 import (
 	"fmt"
 	"master/Driver-go/elevio"
@@ -20,9 +34,6 @@ import (
 	"time"
 )
 
-//Single elevator can have info from multiple elevs in its masterstruct
-//two cases
-
 func main() {
 
 	slaveButtonRx := make(chan types.SlaveButtonEventMsg)
@@ -35,7 +46,7 @@ func main() {
 	NewAction := make(chan types.NewAction, 5)
 	PeerUpdateCh := make(chan peers.PeerUpdate)
 	MasterMsg := make(chan types.MasterStruct, 3)
-	MasterInitStruct := make(chan types.MasterStruct)
+	MasterInitStruct := make(chan types.MasterStruct, 2)
 	MasterMergeSend := make(chan types.MasterStruct, 3)
 	MasterMergeReceive := make(chan types.MasterStruct, 3)
 
@@ -63,27 +74,29 @@ func main() {
 	var NewPeerList peers.PeerUpdate
 
 	initArg := os.Args[1]
-	isolatedArg := os.Args[2]
+	SlaveID := os.Args[2]
+	isolatedArg := os.Args[3]
 
 	fmt.Println()
 	fmt.Println()
 	fmt.Println()
 	fmt.Println()
 	fmt.Println(initArg)
+	fmt.Println(isolatedArg)
 
 	var MasterStruct types.MasterStruct
 	MasterStruct.ElevStates = map[string]elevator.Elev{}
 	MasterStruct.Initialized = false
 
 	if initArg == "init" {
-		SlaveID := os.Args[2]
-		CurrentFloor := os.Args[3]
+		CurrentFloor := os.Args[4]
 		MySlaves := types.MySlaves{Active: []string{SlaveID}}
 		fmt.Println(SlaveID)
 		fmt.Println(CurrentFloor)
 		fmt.Println("init master")
 		MasterStruct = types.MasterStruct{
 			CurrentMasterID: SlaveID,
+			ProcessID:       os.Getpid(),
 			Isolated:        true,  //keep one of these?
 			Initialized:     false, //keep one of these?
 			PeerList:        peers.PeerUpdate{},
@@ -108,8 +121,13 @@ func main() {
 		os.Exit(99)
 	}
 
-	MasterStruct = <-MasterInitStruct
-	MasterStruct.Initialized = true
+	fmt.Println("Waiting for initstruct")
+	//Check for own initstruct
+	for MasterStruct.CurrentMasterID != SlaveID {
+		MasterStruct = <-MasterInitStruct
+		MasterStruct.ProcessID = os.Getpid()
+	}
+
 	IsolatedMasterStruct := MasterStruct
 	if isolatedArg == "isolated" {
 		go func() {
@@ -154,44 +172,53 @@ func main() {
 				PeriodicNewEventIterator = 0
 				fmt.Println("ActiveSlaves: ")
 				fmt.Println(MasterStruct.MySlaves.Active)
+				MasterMergeSend <- MasterStruct
 				NewEvent <- MasterStruct
 			} else {
 				PeriodicNewEventIterator++
 			}
 		case ReceivedMergeStruct := <-MasterMergeReceive:
+
 			fmt.Println("Case ReceivedMasterStruct")
 			fmt.Println("Received: ")
 			fmt.Println(ReceivedMergeStruct)
 			fmt.Println("Current masterstruct: ")
 			fmt.Println(MasterStruct)
 
-			var NextInLine string
-			if len(ReceivedMergeStruct.PeerList.Peers) < 2 {
-				NextInLine = MasterStruct.CurrentMasterID
-			} else {
-				NextInLine = ReceivedMergeStruct.PeerList.Peers[0]
-			}
-			if master.ShouldStayMaster(MasterStruct.CurrentMasterID, NextInLine, MasterStruct.Isolated, ReceivedMergeStruct.Isolated) {
-				MasterStruct = master.MergeMasterStructs(MasterStruct, ReceivedMergeStruct)
-				fmt.Println("merged myslaves")
-				fmt.Println(MasterStruct.MySlaves.Active)
-				fmt.Println(MasterStruct.MySlaves.Immobile)
-				fmt.Println("Merged struct: ")
-				fmt.Println(MasterStruct)
-				HallRequests := MasterStruct.HallRequests
-				for k := range MasterStruct.ElevStates {
-					CabRequests := MasterStruct.ElevStates[k].CabRequests
-					AllRequests := requests.RequestsAppendHallCab(HallRequests, CabRequests)
-					SetOrderLight := types.SetOrderLight{MasterID: MasterStruct.CurrentMasterID, ID: k, LightOn: AllRequests}
-					masterSetOrderLight <- SetOrderLight
+			if ReceivedMergeStruct.CurrentMasterID == MasterStruct.CurrentMasterID {
+				if ReceivedMergeStruct.ProcessID != MasterStruct.ProcessID {
+					fmt.Println("Time to kill, I am myself")
+					os.Exit(99)
 				}
 			} else {
-				for i := 0; i < 5; i++ {
-					MasterMergeSend <- MasterStruct
-					time.Sleep(300 * time.Millisecond)
+				var NextInLine string
+				if len(ReceivedMergeStruct.PeerList.Peers) < 2 {
+					NextInLine = MasterStruct.CurrentMasterID
+				} else {
+					NextInLine = ReceivedMergeStruct.PeerList.Peers[0]
 				}
-				fmt.Println("Time to kill")
-				os.Exit(99)
+				if master.ShouldStayMaster(MasterStruct.CurrentMasterID, NextInLine, MasterStruct.Isolated, ReceivedMergeStruct.Isolated) {
+					MasterStruct = master.MergeMasterStructs(MasterStruct, ReceivedMergeStruct)
+					fmt.Println("merged myslaves")
+					fmt.Println(MasterStruct.MySlaves.Active)
+					fmt.Println(MasterStruct.MySlaves.Immobile)
+					fmt.Println("Merged struct: ")
+					fmt.Println(MasterStruct)
+					HallRequests := MasterStruct.HallRequests
+					for k := range MasterStruct.ElevStates {
+						CabRequests := MasterStruct.ElevStates[k].CabRequests
+						AllRequests := requests.RequestsAppendHallCab(HallRequests, CabRequests)
+						SetOrderLight := types.SetOrderLight{MasterID: MasterStruct.CurrentMasterID, ID: k, LightOn: AllRequests}
+						masterSetOrderLight <- SetOrderLight
+					}
+				} else {
+					for i := 0; i < 5; i++ {
+						MasterMergeSend <- MasterStruct
+						time.Sleep(300 * time.Millisecond)
+					}
+					fmt.Println("Time to kill")
+					os.Exit(99)
+				}
 			}
 
 			NewEvent <- MasterStruct

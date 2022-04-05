@@ -17,8 +17,10 @@ import (
 func main() {
 
 	numFloors := 4
-	elevio.Init("localhost:15661", numFloors)
+	elevio.Init("localhost:15657", numFloors)
 	//Can use localIP, but not when testing on single computer
+
+	//MyIP, _ := localip.LocalIP()
 	MyID := "one"
 
 	drv_buttons := make(chan elevio.ButtonEvent)
@@ -73,7 +75,7 @@ func main() {
 	elevio.SetFloorIndicator(floor)
 	CurrentFloor := strconv.Itoa(floor)
 
-	err := exec.Command("gnome-terminal", "--", "go", "run", "../main.go", "init", MyID, CurrentFloor).Run()
+	err := exec.Command("gnome-terminal", "--", "go", "run", "../main.go", "init", MyID, "isolated", CurrentFloor).Run()
 	fmt.Println(err)
 
 	MySlaves := types.MySlaves{Active: []string{MyID}}
@@ -187,16 +189,25 @@ func main() {
 						MasterStruct.ElevStates[MyID] = e
 						MasterStruct.HallRequests = HallRequests
 						MasterStruct.CurrentMasterID = MyID
-						err := exec.Command("gnome-terminal", "--", "go", "run", "../main.go", "master", "isolated").Run()
+						err := exec.Command("gnome-terminal", "--", "go", "run", "../main.go", "master", MyID, "isolated").Run()
 						fmt.Println(err)
-						//Send masterstruct / mergestruct
+						MasterTimer.Stop()
+						MasterTimer.Reset(MasterTimeout)
+						go func(MasterStruct types.MasterStruct) {
+							for i := 0; i < 10; i++ {
+								MasterInitStruct <- MasterStruct
+								time.Sleep(100 * time.Millisecond)
+							}
+						}(MasterStruct)
 					}
 				}
 
 			} else if Peerlist.Peers[0] == MyID { //I am master, start new master
 				MasterStruct.CurrentMasterID = MyID
-				err := exec.Command("gnome-terminal", "--", "go", "run", "../main.go", "master", "notIsolated").Run()
+				err := exec.Command("gnome-terminal", "--", "go", "run", "../main.go", "master", MyID, "notIsolated").Run()
 				fmt.Println(err)
+				MasterTimer.Stop()
+				MasterTimer.Reset(MasterTimeout)
 
 				go func(MasterStruct types.MasterStruct) {
 					for i := 0; i < 10; i++ {
@@ -303,6 +314,7 @@ func main() {
 			}
 
 		case a := <-commandDoorOpen:
+			//Icnlude can't move somehow
 			if a.MasterID == MasterStruct.CurrentMasterID {
 				if a.ID == MyID && !doorIsOpen && elevio.GetFloor() != -1 {
 					elevio.SetDoorOpenLamp(a.SetDoorOpen)
