@@ -59,10 +59,14 @@ type AbleToMove struct {
 	ID         string
 	AbleToMove bool
 }
+type MySlaves struct {
+	Active   []string
+	Immobile []string
+}
 
 type MasterStruct struct {
 	CurrentMasterID string
-	ActiveSlaves    []string
+	MySlaves        MySlaves
 	Isolated        bool
 	Initialized     bool
 	PeerList        peers.PeerUpdate

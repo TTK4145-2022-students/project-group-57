@@ -76,6 +76,8 @@ func main() {
 	err := exec.Command("gnome-terminal", "--", "go", "run", "../main.go", "init", MyID, CurrentFloor).Run()
 	fmt.Println(err)
 
+	MySlaves := types.MySlaves{Active: []string{MyID}}
+
 	MasterStruct := types.MasterStruct{
 		CurrentMasterID: MyID,
 		Isolated:        false,
@@ -83,7 +85,7 @@ func main() {
 		PeerList:        peers.PeerUpdate{},
 		HallRequests:    [][2]bool{{false, false}, {false, false}, {false, false}, {false, false}},
 		ElevStates:      map[string]elevator.Elev{},
-		ActiveSlaves:    []string{MyID},
+		MySlaves:        MySlaves,
 	}
 
 	e := fsm.UnInitializedElev()
@@ -95,7 +97,7 @@ func main() {
 	doorTimer := time.NewTimer(100 * time.Second) //Trouble initializing timer like this, maybe
 	doorIsOpen := false
 	obstructionActive := false
-	AbleToMoveTimer := time.NewTimer(100 * time.Second)
+	AbleToMoveTimer := time.NewTimer(10 * time.Second)
 	AbleToMoveTimerStarted := false
 	MasterTimeout := 5 * time.Second
 	MasterTimer := time.NewTimer(MasterTimeout)
@@ -258,15 +260,19 @@ func main() {
 		case a := <-masterMotorDirRx:
 			if a.ID == MyID && a.MasterID == MasterStruct.CurrentMasterID {
 
+				//if "stop" stop timer
+
 				if a.Motordir != "stop" && !AbleToMoveTimerStarted && !doorIsOpen {
 					fmt.Println("UnableToMoveTimer started")
 					AbleToMoveTimer.Stop()
 					AbleToMoveTimer.Reset(3 * time.Second)
 					AbleToMoveTimerStarted = true
+				} else if a.Motordir == "stop" {
+					AbleToMoveTimer.Stop()
+					AbleToMoveTimerStarted = false
 				}
 				floor := elevio.GetFloor()
-				if (floor == elevio.NumFloors-1 && a.Motordir == "up") ||
-					(floor == 0 && a.Motordir == "down") {
+				if (floor == elevio.NumFloors-1 && a.Motordir == "up") || (floor == 0 && a.Motordir == "down") {
 					floorEvent := types.SlaveFloor{ID: MyID, NewFloor: floor}
 					slaveFloorTx <- floorEvent
 				} else {

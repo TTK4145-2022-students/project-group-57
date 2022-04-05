@@ -24,7 +24,7 @@ func MasterFindNextAction(
 		}
 		//Iterate Myslaves
 		//Save input = ElevStates[myslaveID]
-		for _, ID := range MasterStruct.ActiveSlaves {
+		for _, ID := range MasterStruct.MySlaves.Active {
 			HRAInput.States[ID] = MasterStruct.ElevStates[ID]
 		}
 		jsonBytes, _ := json.Marshal(HRAInput)
@@ -36,67 +36,60 @@ func MasterFindNextAction(
 		for k, v := range *HRAOutput {
 			fmt.Printf("%6v :  %+v\n", k, v)
 		}
-		fmt.Println(MasterStruct.ActiveSlaves)
-		for _, peer := range MasterStruct.PeerList.Peers {
-			var NextAction types.NewAction
-			isActive := false
-			for _, slave := range MasterStruct.ActiveSlaves {
-				if peer == slave {
-					isActive = true
-				}
-			}
-			if isActive {
-				ElevAssignedHallReqs := (*HRAOutput)[peer]
-				elevState := HRAInput.States[peer]
-				ElevCabRequests := elevState.CabRequests
-				var action requests.Action
-				AllRequests := requests.RequestsAppendHallCab(ElevAssignedHallReqs, ElevCabRequests)
-				if requests.RequestShouldStop(elevState, AllRequests) && elevState.Behaviour != "moving" {
-					if requests.RequestsHere(elevState, AllRequests) {
-						action = requests.Action{Dirn: elevio.StringToMotorDir(elevState.Dirn), Behaviour: elevator.EB_DoorOpen}
-					} else {
-						action = requests.Action{Dirn: elevio.MD_Stop, Behaviour: elevator.EB_Idle}
-					}
+		fmt.Println(MasterStruct.MySlaves.Active)
+		var NextAction types.NewAction
+		var action requests.Action
+		for _, slave := range MasterStruct.MySlaves.Active {
+			ElevAssignedHallReqs := (*HRAOutput)[slave]
+			elevState := HRAInput.States[slave]
+			ElevCabRequests := elevState.CabRequests
+			AllRequests := requests.RequestsAppendHallCab(ElevAssignedHallReqs, ElevCabRequests)
+			if requests.RequestShouldStop(elevState, AllRequests) && elevState.Behaviour != "moving" {
+				if requests.RequestsHere(elevState, AllRequests) {
+					action = requests.Action{Dirn: elevio.StringToMotorDir(elevState.Dirn), Behaviour: elevator.EB_DoorOpen}
 				} else {
-					if elevState.Behaviour == elevator.EB_Moving {
-						action = requests.Action{Dirn: elevio.StringToMotorDir(elevState.Dirn), Behaviour: elevState.Behaviour}
-					} else {
-						action = requests.RequestsNextAction(elevState, AllRequests)
-					}
+					action = requests.Action{Dirn: elevio.MD_Stop, Behaviour: elevator.EB_Idle}
 				}
-				NextAction = types.NewAction{ID: peer, Action: action}
 			} else {
-				previousDirn := elevio.StringToMotorDir(MasterStruct.ElevStates[peer].Dirn)
-				if previousDirn == elevio.MD_Stop {
-					if MasterStruct.ElevStates[peer].Floor == 0 {
-						previousDirn = elevio.MD_Up
-					} else {
-						previousDirn = elevio.MD_Down
-					}
+				if elevState.Behaviour == elevator.EB_Moving {
+					action = requests.Action{Dirn: elevio.StringToMotorDir(elevState.Dirn), Behaviour: elevState.Behaviour}
+				} else {
+					action = requests.RequestsNextAction(elevState, AllRequests)
 				}
-				if MasterStruct.ElevStates[peer].Floor == 0 && previousDirn == elevio.MD_Down {
-					previousDirn = elevio.MD_Up
-				}
-				fmt.Println("Current peer: ")
-				fmt.Println(peer)
-				fmt.Println("NextAction: ")
-				fmt.Println(previousDirn)
-				action := requests.Action{Dirn: previousDirn, Behaviour: elevator.EB_Moving}
-				NextAction = types.NewAction{ID: peer, Action: action}
 			}
+			NextAction = types.NewAction{ID: slave, Action: action}
 			NewAction <- NextAction
 		}
-		//Return extra info
+		for _, slave := range MasterStruct.MySlaves.Immobile {
+			NextAction = types.NewAction{ID: slave, Action: action}
+			previousDirn := elevio.StringToMotorDir(MasterStruct.ElevStates[slave].Dirn)
+			if previousDirn == elevio.MD_Stop {
+				if MasterStruct.ElevStates[slave].Floor == 0 {
+					previousDirn = elevio.MD_Up
+				} else {
+					previousDirn = elevio.MD_Down
+				}
+			}
+			if MasterStruct.ElevStates[slave].Floor == 0 && previousDirn == elevio.MD_Down {
+				previousDirn = elevio.MD_Up
+			}
+			fmt.Println("Current slave: ")
+			fmt.Println(slave)
+			fmt.Println("NextAction: ")
+			fmt.Println(previousDirn)
+			action := requests.Action{Dirn: previousDirn, Behaviour: elevator.EB_Moving}
+			NextAction = types.NewAction{ID: slave, Action: action}
+			NewAction <- NextAction
+		}
 	}
 }
 
 func MergeMasterStructs(MasterStruct types.MasterStruct, ReceivedMergeStruct types.MasterStruct) types.MasterStruct {
-	//Check if Received can have multiple elevstate
 	MasterHallRequests := MasterStruct.HallRequests
 	ReceivedHallRequests := ReceivedMergeStruct.HallRequests
 	ReceivedID := ReceivedMergeStruct.CurrentMasterID
 	ReceivedState := ReceivedMergeStruct.ElevStates[ReceivedID]
-	MasterStruct.ActiveSlaves = AppendNoDuplicates(MasterStruct.ActiveSlaves, ReceivedID)
+	MasterStruct.MySlaves.Active = AppendNoDuplicates(MasterStruct.MySlaves.Active, ReceivedID)
 	MasterStruct.Isolated = false
 	if entry, ok := MasterStruct.ElevStates[ReceivedID]; ok {
 		for i := 0; i < elevio.NumFloors; i++ {
@@ -117,28 +110,28 @@ func MergeMasterStructs(MasterStruct types.MasterStruct, ReceivedMergeStruct typ
 	return MasterStruct
 }
 
-func AppendNoDuplicates(ActiveSlaves []string, Peer string) []string {
+func AppendNoDuplicates(slice []string, element string) []string {
 	duplicate := false
-	for _, slave := range ActiveSlaves {
-		if Peer == slave {
+	for _, val := range slice {
+		if element == val {
 			duplicate = true
 			break
 		}
 	}
 	if !duplicate {
-		ActiveSlaves = append(ActiveSlaves, Peer)
+		slice = append(slice, element)
 	}
-	return ActiveSlaves
+	return slice
 }
 
-func DeleteLostPeer(ActiveSlaves []string, LostPeers string) []string {
-	var UpdatedActiveSlaves []string
-	for j := range ActiveSlaves {
-		if LostPeers != ActiveSlaves[j] {
-			UpdatedActiveSlaves = append(UpdatedActiveSlaves, ActiveSlaves[j])
+func DeleteElementFromSlice(slice []string, element string) []string {
+	var result []string
+	for j := range slice {
+		if element != slice[j] {
+			result = append(result, slice[j])
 		}
 	}
-	return UpdatedActiveSlaves
+	return result
 }
 
 func ShouldStayMaster(CurrentMaster string, NextInLine string, MasterIsolated bool, ReceivedIsolated bool) bool {

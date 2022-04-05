@@ -78,6 +78,7 @@ func main() {
 	if initArg == "init" {
 		SlaveID := os.Args[2]
 		CurrentFloor := os.Args[3]
+		MySlaves := types.MySlaves{Active: []string{SlaveID}}
 		fmt.Println(SlaveID)
 		fmt.Println(CurrentFloor)
 		fmt.Println("init master")
@@ -87,7 +88,7 @@ func main() {
 			Initialized:     false, //keep one of these?
 			PeerList:        peers.PeerUpdate{},
 			HallRequests:    [][2]bool{{false, false}, {false, false}, {false, false}, {false, false}},
-			ActiveSlaves:    []string{SlaveID},
+			MySlaves:        MySlaves,
 			ElevStates:      map[string]elevator.Elev{},
 		}
 		MasterStruct.ElevStates[SlaveID] = fsm.UnInitializedElev()
@@ -124,10 +125,14 @@ func main() {
 		case a := <-AbleToMoveCh:
 			fmt.Println("UnableToMove received, value: ")
 			fmt.Println(a.AbleToMove)
+			fmt.Println(MasterStruct.MySlaves.Active)
+			fmt.Println(MasterStruct.MySlaves.Immobile)
 			if a.AbleToMove {
-				MasterStruct.ActiveSlaves = master.AppendNoDuplicates(MasterStruct.ActiveSlaves, a.ID)
+				MasterStruct.MySlaves.Active = master.AppendNoDuplicates(MasterStruct.MySlaves.Active, a.ID)
+				MasterStruct.MySlaves.Immobile = master.DeleteElementFromSlice(MasterStruct.MySlaves.Immobile, a.ID)
 			} else {
-				MasterStruct.ActiveSlaves = master.DeleteLostPeer(MasterStruct.ActiveSlaves, a.ID)
+				MasterStruct.MySlaves.Active = master.DeleteElementFromSlice(MasterStruct.MySlaves.Active, a.ID)
+				MasterStruct.MySlaves.Immobile = master.AppendNoDuplicates(MasterStruct.MySlaves.Immobile, a.ID)
 				fmt.Println()
 				fmt.Println()
 				fmt.Println()
@@ -138,6 +143,8 @@ func main() {
 				fmt.Println()
 				fmt.Println()
 			}
+			fmt.Println(MasterStruct.MySlaves.Active)
+			fmt.Println(MasterStruct.MySlaves.Immobile)
 			NewEvent <- MasterStruct
 
 		case <-time.After(interval):
@@ -146,7 +153,7 @@ func main() {
 			if PeriodicNewEventIterator == 10 {
 				PeriodicNewEventIterator = 0
 				fmt.Println("ActiveSlaves: ")
-				fmt.Println(MasterStruct.ActiveSlaves)
+				fmt.Println(MasterStruct.MySlaves.Active)
 				NewEvent <- MasterStruct
 			} else {
 				PeriodicNewEventIterator++
@@ -166,6 +173,9 @@ func main() {
 			}
 			if master.ShouldStayMaster(MasterStruct.CurrentMasterID, NextInLine, MasterStruct.Isolated, ReceivedMergeStruct.Isolated) {
 				MasterStruct = master.MergeMasterStructs(MasterStruct, ReceivedMergeStruct)
+				fmt.Println("merged myslaves")
+				fmt.Println(MasterStruct.MySlaves.Active)
+				fmt.Println(MasterStruct.MySlaves.Immobile)
 				fmt.Println("Merged struct: ")
 				fmt.Println(MasterStruct)
 				HallRequests := MasterStruct.HallRequests
@@ -188,17 +198,19 @@ func main() {
 
 		case NewPeerList = <-PeerUpdateCh: //Use only for deleting, not adding new
 			//Periodically add slaves to myslaves from peerlist.peers
-
 			fmt.Println("Peerlist")
 			fmt.Println(NewPeerList)
 			MasterStruct.PeerList = NewPeerList
 			if len(NewPeerList.Lost) != 0 {
 				for k := range NewPeerList.Lost {
-					MasterStruct.ActiveSlaves = master.DeleteLostPeer(MasterStruct.ActiveSlaves, NewPeerList.Lost[k])
+					MasterStruct.MySlaves.Active = master.DeleteElementFromSlice(MasterStruct.MySlaves.Active, NewPeerList.Lost[k])
+					MasterStruct.MySlaves.Immobile = master.DeleteElementFromSlice(MasterStruct.MySlaves.Immobile, NewPeerList.Lost[k])
 				}
-				fmt.Println(MasterStruct.ActiveSlaves)
 				NewEvent <- MasterStruct
 			}
+			fmt.Println("updated a peer")
+			fmt.Println(MasterStruct.MySlaves.Active)
+			fmt.Println(MasterStruct.MySlaves.Immobile)
 
 		case slaveMsg := <-slaveButtonRx:
 			if slaveMsg.Btn_type == 2 {
