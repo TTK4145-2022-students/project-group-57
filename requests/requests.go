@@ -54,7 +54,6 @@ func RequestsBelow(e elevator.Elev, reqs [elevio.NumFloors][elevio.NumButtonType
 	return false
 }
 
-//Modified to work without cabreqs
 func RequestsHere(e elevator.Elev, reqs [elevio.NumFloors][elevio.NumButtonTypes]bool) bool {
 	for btn := 0; btn < elevio.NumButtonTypes; btn++ {
 		if reqs[e.Floor][btn] {

@@ -19,8 +19,6 @@ func main() {
 
 	numFloors := 4
 	elevio.Init("localhost:15657", numFloors)
-	//Can use localIP, but not when testing on single computer
-
 	MyID, _ := localip.LocalIP()
 	//MyID := "one"
 
@@ -29,18 +27,18 @@ func main() {
 	drv_obstr := make(chan bool)
 	drv_stop := make(chan bool)
 
-	commandDoorOpen := make(chan types.DoorOpen)
+	commandDoorOpenCh := make(chan types.DoorOpen)
 	slaveButtonTx := make(chan types.SlaveButtonEventMsg)
 	slaveFloorTx := make(chan types.SlaveFloor, 5)
 	masterMotorDirRx := make(chan types.MasterCommand)
-	masterSetOrderLight := make(chan types.SetOrderLight)
-	slaveDoorOpened := make(chan types.DoorOpen)
-	transmitEnable := make(chan bool)
-	MasterMsg := make(chan types.MasterStruct)
-	MasterInitStruct := make(chan types.MasterStruct)
-	NewMasterIDCh := make(chan types.NewMasterID)
-	PeerUpdateCh := make(chan peers.PeerUpdate)
-	AbleToMoveCh := make(chan types.AbleToMove)
+	masterSetOrderLightCh := make(chan types.SetOrderLight)
+	slaveDoorOpenedCh := make(chan types.DoorOpen)
+	transmitEnableCh := make(chan bool)
+	masterMsgCh := make(chan types.MasterStruct)
+	masterInitStructCh := make(chan types.MasterStruct)
+	newMasterIDCh := make(chan types.NewMasterID)
+	peerUpdateCh := make(chan peers.PeerUpdate)
+	ableToMoveCh := make(chan types.AbleToMove)
 
 	go elevio.PollButtons(drv_buttons)
 	go elevio.PollFloorSensor(drv_floors)
@@ -49,25 +47,23 @@ func main() {
 
 	go broadcast.Transmitter(16513, slaveButtonTx)
 	go broadcast.Transmitter(16514, slaveFloorTx)
-	go broadcast.Transmitter(16521, slaveDoorOpened)
-	go broadcast.Transmitter(16527, MasterInitStruct)
-	go broadcast.Transmitter(16528, AbleToMoveCh)
+	go broadcast.Transmitter(16521, slaveDoorOpenedCh)
+	go broadcast.Transmitter(16527, masterInitStructCh)
+	go broadcast.Transmitter(16528, ableToMoveCh)
 
 	go broadcast.Receiver(16515, masterMotorDirRx)
-	go broadcast.Receiver(16518, masterSetOrderLight)
-	go broadcast.Receiver(16520, commandDoorOpen)
-	go broadcast.Receiver(16523, MasterMsg)
-	go broadcast.Receiver(16524, NewMasterIDCh)
+	go broadcast.Receiver(16518, masterSetOrderLightCh)
+	go broadcast.Receiver(16520, commandDoorOpenCh)
+	go broadcast.Receiver(16523, masterMsgCh)
+	go broadcast.Receiver(16524, newMasterIDCh)
 
-	go peers.Transmitter(16529, MyID, transmitEnable)
-	go peers.Receiver(16529, PeerUpdateCh)
+	go peers.Transmitter(16529, MyID, transmitEnableCh)
+	go peers.Receiver(16529, peerUpdateCh)
 
-	//INIT
 	var Peerlist peers.PeerUpdate
 	InitTurnLightsOff := [4][3]bool{}
 	fsm.SetAllLights(InitTurnLightsOff)
 	elevio.SetDoorOpenLamp(false)
-
 	floor := elevio.GetFloor()
 	if floor == -1 {
 		elevio.SetMotorDirection(elevio.MD_Down)
@@ -82,7 +78,6 @@ func main() {
 	MasterStruct := types.MasterStruct{
 		CurrentMasterID: MyID,
 		Isolated:        false,
-		Initialized:     false,
 		PeerList:        peers.PeerUpdate{},
 		HallRequests:    [][2]bool{{false, false}, {false, false}, {false, false}, {false, false}},
 		ElevStates:      map[string]elevator.Elev{},
@@ -119,10 +114,9 @@ func main() {
 
 		case a := <-drv_floors:
 			if a != MasterStruct.ElevStates[MyID].Floor {
-				fmt.Println("Stopping timer, case floor")
 				AbleToMoveTimer.Stop()
 				AbleToMoveTimerStarted = false
-				AbleToMoveCh <- types.AbleToMove{ID: MyID, AbleToMove: true}
+				ableToMoveCh <- types.AbleToMove{ID: MyID, AbleToMove: true}
 			}
 			elevio.SetFloorIndicator(a)
 			elevio.SetMotorDirection(elevio.MD_Stop)
@@ -132,10 +126,10 @@ func main() {
 		case a := <-drv_obstr:
 			if a {
 				obstructionActive = true
-				AbleToMoveCh <- types.AbleToMove{ID: MyID, AbleToMove: false}
+				ableToMoveCh <- types.AbleToMove{ID: MyID, AbleToMove: false}
 			} else {
 				obstructionActive = false
-				AbleToMoveCh <- types.AbleToMove{ID: MyID, AbleToMove: true}
+				ableToMoveCh <- types.AbleToMove{ID: MyID, AbleToMove: true}
 				if doorIsOpen {
 					doorTimer.Stop()
 					doorTimer.Reset(3 * time.Second)
@@ -145,28 +139,23 @@ func main() {
 		case a := <-drv_stop:
 			fmt.Printf("%+v\n", a)
 
-		case a := <-MasterMsg:
+		case a := <-masterMsgCh:
 			if a.CurrentMasterID == MasterStruct.CurrentMasterID {
 				MasterStruct = a
 				MasterTimer.Stop()
 				MasterTimer.Reset(MasterTimeout)
 			}
 
-		case a := <-NewMasterIDCh:
+		case a := <-newMasterIDCh:
 			if a.SlaveID == MyID {
 				MasterStruct.CurrentMasterID = a.NewMasterID
 			}
 
-		case NewPeerlist := <-PeerUpdateCh:
+		case NewPeerlist := <-peerUpdateCh:
 			Peerlist = NewPeerlist
 
 		case <-MasterTimer.C:
-			if len(Peerlist.Peers) == 0 { //SINGLE ELEVATOR
-				fmt.Println("SingleElevator")
-
-				//INIT SingleElevFunc
-				//InitSingleElev(MasterStruct, )
-
+			if len(Peerlist.Peers) == 0 {
 				HallRequests := MasterStruct.HallRequests
 				if len(HallRequests) == 0 {
 					HallRequests = [][2]bool{{false, false}, {false, false}, {false, false}, {false, false}}
@@ -176,12 +165,8 @@ func main() {
 					CabRequests = [4]bool{false, false, false, false}
 				}
 				SingleElevRequests := requests.RequestsAppendHallCab(HallRequests, CabRequests)
-				fmt.Println("Beh")
-				fmt.Println(MasterStruct.ElevStates[MyID].Behaviour)
-				fmt.Println("Dirn")
-				fmt.Println(MasterStruct.ElevStates[MyID].Dirn)
 				e := elevator.Elev{
-					Behaviour:   elevator.EB_Idle, //keep in case door open
+					Behaviour:   elevator.EB_Idle,
 					Floor:       elevio.GetFloor(),
 					Dirn:        "stop",
 					CabRequests: CabRequests,
@@ -189,8 +174,6 @@ func main() {
 				if e.Floor == -1 {
 					e = fsm.Fsm_onInitBetweenFloors(e)
 				}
-				fmt.Println("DoorisOpen")
-				fmt.Println(doorIsOpen)
 				fsm.SetAllLights(SingleElevRequests)
 				if doorIsOpen && obstructionActive {
 					elevio.SetDoorOpenLamp(true)
@@ -204,7 +187,7 @@ func main() {
 					if !obstructionActive {
 						elevio.SetMotorDirection(NextAction.Dirn)
 					}
-					e.Behaviour = NextAction.Behaviour //problem, overwrites to idle
+					e.Behaviour = NextAction.Behaviour
 					e.Dirn = elevio.MotorDirToString(NextAction.Dirn)
 				} else {
 					elevio.SetDoorOpenLamp(true)
@@ -218,7 +201,6 @@ func main() {
 					doorTimer.Reset(3 * time.Second)
 				}
 				for len(Peerlist.Peers) == 0 {
-
 					select {
 					case a := <-drv_buttons:
 						elevio.SetButtonLamp(a.Button, a.Floor, true)
@@ -254,8 +236,7 @@ func main() {
 						if !obstructionActive {
 							e, SingleElevRequests = fsm.Fsm_onDoorTimeout(e, SingleElevRequests)
 						}
-					case a := <-PeerUpdateCh:
-						//what happens here
+					case a := <-peerUpdateCh:
 						Peerlist = a
 						HallRequests, CabRequests = requests.RequestsSplitHallCab(SingleElevRequests)
 						e.CabRequests = CabRequests
@@ -263,7 +244,7 @@ func main() {
 						MasterStruct.HallRequests = HallRequests
 						MasterStruct.CurrentMasterID = MyID
 						if obstructionActive {
-							AbleToMoveCh <- types.AbleToMove{ID: MyID, AbleToMove: false}
+							ableToMoveCh <- types.AbleToMove{ID: MyID, AbleToMove: false}
 						}
 						exec.Command("gnome-terminal", "--", "go", "run", "../main.go", "master", MyID, "isolated").Run()
 						MasterTimer.Stop()
@@ -271,14 +252,14 @@ func main() {
 						IsolatedMasterStruct := MasterStruct
 						go func() {
 							for i := 0; i < 10; i++ {
-								MasterInitStruct <- IsolatedMasterStruct
+								masterInitStructCh <- IsolatedMasterStruct
 								time.Sleep(100 * time.Millisecond)
 							}
 						}()
 					}
 				}
 
-			} else if Peerlist.Peers[0] == MyID { //I am master, start new master
+			} else if Peerlist.Peers[0] == MyID {
 				MasterStruct.CurrentMasterID = MyID
 				exec.Command("gnome-terminal", "--", "go", "run", "../main.go", "master", MyID, "notIsolated").Run()
 				MasterTimer.Stop()
@@ -286,11 +267,11 @@ func main() {
 
 				go func(MasterStruct types.MasterStruct) {
 					for i := 0; i < 10; i++ {
-						MasterInitStruct <- MasterStruct
+						masterInitStructCh <- MasterStruct
 						time.Sleep(100 * time.Millisecond)
 					}
 				}(MasterStruct)
-			} else { //Somebody else is master
+			} else {
 				MasterTimer.Stop()
 				MasterTimer.Reset(MasterTimeout)
 			}
@@ -298,7 +279,6 @@ func main() {
 		case a := <-masterMotorDirRx:
 			if a.ID == MyID && a.MasterID == MasterStruct.CurrentMasterID {
 				if a.Motordir != "stop" && !AbleToMoveTimerStarted && !doorIsOpen {
-					fmt.Println("UnableToMoveTimer started")
 					AbleToMoveTimer.Stop()
 					AbleToMoveTimer.Reset(3 * time.Second)
 					AbleToMoveTimerStarted = true
@@ -317,19 +297,17 @@ func main() {
 				}
 			}
 		case <-AbleToMoveTimer.C:
-			fmt.Println("***********************************UnableToMove sent*****************************")
-			AbleToMoveCh <- types.AbleToMove{ID: MyID, AbleToMove: false}
+			ableToMoveCh <- types.AbleToMove{ID: MyID, AbleToMove: false}
 			AbleToMoveTimerStarted = false
 
-		case a := <-masterSetOrderLight:
+		case a := <-masterSetOrderLightCh:
 			if a.ID == MyID && a.MasterID == MasterStruct.CurrentMasterID {
 				fsm.SetAllLights(a.LightOn)
 			} else {
 				fsm.SetOnlyHallLights(a.LightOn)
 			}
 
-		case a := <-commandDoorOpen:
-			//Icnlude can't move somehow
+		case a := <-commandDoorOpenCh:
 			if a.MasterID == MasterStruct.CurrentMasterID {
 				if a.ID == MyID && elevio.GetFloor() != -1 {
 					if !doorIsOpen {
@@ -337,7 +315,7 @@ func main() {
 						elevio.SetMotorDirection(0)
 						if a.SetDoorOpen {
 							if obstructionActive {
-								AbleToMoveCh <- types.AbleToMove{ID: MyID, AbleToMove: false}
+								ableToMoveCh <- types.AbleToMove{ID: MyID, AbleToMove: false}
 								AbleToMoveTimer.Stop()
 								AbleToMoveTimerStarted = false
 							}
@@ -347,9 +325,9 @@ func main() {
 							doorTimer.Stop()
 							doorTimer.Reset(3 * time.Second)
 						}
-						slaveDoorOpened <- a
+						slaveDoorOpenedCh <- a
 					} else {
-						slaveDoorOpened <- a
+						slaveDoorOpenedCh <- a
 					}
 				}
 			}
@@ -358,7 +336,7 @@ func main() {
 			if !obstructionActive {
 				doorIsOpen = false
 				elevio.SetDoorOpenLamp(false)
-				slaveDoorOpened <- types.DoorOpen{ID: MyID, SetDoorOpen: false}
+				slaveDoorOpenedCh <- types.DoorOpen{ID: MyID, SetDoorOpen: false}
 			} else {
 				doorTimer.Stop()
 				doorTimer.Reset(3 * time.Second)

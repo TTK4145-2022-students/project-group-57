@@ -1,7 +1,6 @@
 package fsm
 
 import (
-	"fmt"
 	"master/Driver-go/elevio"
 	"master/elevator"
 	"master/requests"
@@ -79,18 +78,13 @@ func Fsm_onRequestButtonPressed(e elevator.Elev, reqs [elevio.NumFloors][elevio.
 func Fsm_onFloorArrival(e elevator.Elev, reqs [elevio.NumFloors][elevio.NumButtonTypes]bool, newFloor int, doorTimer *time.Timer) (elevator.Elev, [elevio.NumFloors][elevio.NumButtonTypes]bool) {
 	e.Floor = newFloor
 	elevio.SetFloorIndicator(newFloor)
-	fmt.Println(e.Behaviour)
 	switch e.Behaviour {
 	case elevator.EB_Moving:
-		fmt.Println("inside case moving")
 		if requests.SingleElevRequestShouldStop(e, reqs) {
-			fmt.Println("trying to stop")
 			elevio.SetMotorDirection(elevio.MD_Stop)
 			elevio.SetDoorOpenLamp(true)
 			doorTimer.Stop()
 			doorTimer.Reset(3 * time.Second)
-			fmt.Println("Timer started")
-			//e, reqs = requests.ClearRequestCurrentFloor(e, reqs) //NO
 			HallRequests, _ := requests.RequestsSplitHallCab(reqs)
 			ClearHallReqs := requests.ShouldClearHallRequest(e, HallRequests)
 			reqs[e.Floor][0] = ClearHallReqs[0]
@@ -110,9 +104,6 @@ func Fsm_onDoorTimeout(e elevator.Elev, reqs [elevio.NumFloors][elevio.NumButton
 		a := requests.RequestsNextAction(e, reqs)
 		e.Dirn = elevio.MotorDirToString(a.Dirn)
 		e.Behaviour = a.Behaviour
-
-		fmt.Println("Next", e.Behaviour)
-		fmt.Println("dir", e.Dirn)
 
 		switch e.Behaviour {
 		case elevator.EB_DoorOpen:

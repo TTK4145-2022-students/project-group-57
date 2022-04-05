@@ -2,7 +2,6 @@ package master
 
 import (
 	"encoding/json"
-	"fmt"
 	"master/Driver-go/elevio"
 	"master/elevator"
 	"master/requests"
@@ -12,33 +11,23 @@ import (
 
 //Finds next action
 func MasterFindNextAction(
-	NewEvent <-chan types.MasterStruct,
-	NewAction chan<- types.NewAction) {
+	newEventCh <-chan types.MasterStruct,
+	newActionCh chan<- types.NewAction) {
 	HRAExecutable := "hall_request_assigner"
 	HRAOutput := new(map[string][][2]bool)
 	for {
-		MasterStruct := <-NewEvent
+		MasterStruct := <-newEventCh
 		HRAInput := types.HRAInput{
 			HallRequests: MasterStruct.HallRequests,
 			States:       map[string]elevator.Elev{},
 		}
-		//Iterate Myslaves
-		//Save input = ElevStates[myslaveID]
-
-		//////////////////////////////////////////
 		for _, ID := range MasterStruct.MySlaves.Active {
 			HRAInput.States[ID] = MasterStruct.ElevStates[ID]
 		}
-		//////////////////////////////////////////////
 		jsonBytes, _ := json.Marshal(HRAInput)
 		ret, _ := exec.Command("../hall_request_assigner/"+HRAExecutable, "-i", string(jsonBytes)).Output()
 		json.Unmarshal(ret, &HRAOutput)
 
-		fmt.Printf("output: \n")
-		for k, v := range *HRAOutput {
-			fmt.Printf("%6v :  %+v\n", k, v)
-		}
-		fmt.Println(MasterStruct.MySlaves.Active)
 		var NextAction types.NewAction
 		var action requests.Action
 		for _, slave := range MasterStruct.MySlaves.Active {
@@ -60,7 +49,7 @@ func MasterFindNextAction(
 				}
 			}
 			NextAction = types.NewAction{ID: slave, Action: action}
-			NewAction <- NextAction
+			newActionCh <- NextAction
 		}
 		for _, slave := range MasterStruct.MySlaves.Immobile {
 			NextAction = types.NewAction{ID: slave, Action: action}
@@ -75,13 +64,9 @@ func MasterFindNextAction(
 			if MasterStruct.ElevStates[slave].Floor == 0 && previousDirn == elevio.MD_Down {
 				previousDirn = elevio.MD_Up
 			}
-			fmt.Println("Current slave: ")
-			fmt.Println(slave)
-			fmt.Println("NextAction: ")
-			fmt.Println(previousDirn)
 			action := requests.Action{Dirn: previousDirn, Behaviour: elevator.EB_Moving}
 			NextAction = types.NewAction{ID: slave, Action: action}
-			NewAction <- NextAction
+			newActionCh <- NextAction
 		}
 	}
 }
