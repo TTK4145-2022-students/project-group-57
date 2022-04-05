@@ -182,10 +182,23 @@ func main() {
 					e = fsm.Fsm_onInitBetweenFloors(e)
 				}
 
+				fsm.SetAllLights(SingleElevRequests)
+
 				NextAction := requests.RequestsNextAction(e, SingleElevRequests)
 				elevio.SetMotorDirection(NextAction.Dirn)
 				e.Behaviour = NextAction.Behaviour
 				e.Dirn = elevio.MotorDirToString(NextAction.Dirn)
+				if e.Behaviour == elevator.EB_DoorOpen {
+					elevio.SetDoorOpenLamp(true)
+					ClearHallReqs := requests.ShouldClearHallRequest(e, HallRequests)
+					SingleElevRequests[e.Floor][0] = ClearHallReqs[0]
+					SingleElevRequests[e.Floor][1] = ClearHallReqs[1]
+					SingleElevRequests[e.Floor][2] = false
+					fsm.SetAllLights(SingleElevRequests)
+					e.Behaviour = elevator.EB_DoorOpen
+					doorTimer.Stop()
+					doorTimer.Reset(3 * time.Second)
+				}
 				for len(Peerlist.Peers) == 0 {
 					select {
 					case a := <-drv_buttons:

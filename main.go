@@ -14,14 +14,15 @@ package main
 //two masters coexist -- FIXED
 //Elevator receiving doorOpen in floor, but elevator has powerLoss, need to remove from activeSlaves
 //PacketLoss and disconnects
-//Fix SingleElevator?
+//Fix SingleElevator? --Fixed?
 //MyIP instead of MyID
 //Possible processPair with slave?
-//Make function masterUninitMasterStructsudo 16
+//Make function masterUninitMasterStruct
 //SwitchCase on masterArgs?
-//Two elevators come from isolated
+//Two elevators come from isolated -- not relevant, but fixed?
 
 //When packetloss >= 0.2 -> lights doesn't always get turned off, door doesn't always open
+//TEST MORE PACKETLOSS (0.25-0.5???)
 import (
 	"fmt"
 	"master/Driver-go/elevio"
