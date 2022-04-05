@@ -6,6 +6,7 @@ import (
 	"master/elevator"
 	"master/fsm"
 	"master/network/broadcast"
+	"master/network/localip"
 	"master/network/peers"
 	"master/requests"
 	"master/types"
@@ -20,8 +21,8 @@ func main() {
 	elevio.Init("localhost:15657", numFloors)
 	//Can use localIP, but not when testing on single computer
 
-	//MyIP, _ := localip.LocalIP()
-	MyID := "one"
+	MyID, _ := localip.LocalIP()
+	//MyID := "one"
 
 	drv_buttons := make(chan elevio.ButtonEvent)
 	drv_floors := make(chan int)
@@ -162,6 +163,10 @@ func main() {
 		case <-MasterTimer.C:
 			if len(Peerlist.Peers) == 0 { //SINGLE ELEVATOR
 				fmt.Println("SingleElevator")
+
+				//INIT SingleElevFunc
+				//InitSingleElev(MasterStruct, )
+
 				HallRequests := MasterStruct.HallRequests
 				if len(HallRequests) == 0 {
 					HallRequests = [][2]bool{{false, false}, {false, false}, {false, false}, {false, false}}
@@ -171,9 +176,12 @@ func main() {
 					CabRequests = [4]bool{false, false, false, false}
 				}
 				SingleElevRequests := requests.RequestsAppendHallCab(HallRequests, CabRequests)
-
+				fmt.Println("Beh")
+				fmt.Println(MasterStruct.ElevStates[MyID].Behaviour)
+				fmt.Println("Dirn")
+				fmt.Println(MasterStruct.ElevStates[MyID].Dirn)
 				e := elevator.Elev{
-					Behaviour:   elevator.EB_Idle,
+					Behaviour:   elevator.EB_Idle, //keep in case door open
 					Floor:       elevio.GetFloor(),
 					Dirn:        "stop",
 					CabRequests: CabRequests,
@@ -181,14 +189,24 @@ func main() {
 				if e.Floor == -1 {
 					e = fsm.Fsm_onInitBetweenFloors(e)
 				}
-
+				fmt.Println("DoorisOpen")
+				fmt.Println(doorIsOpen)
 				fsm.SetAllLights(SingleElevRequests)
-
-				NextAction := requests.RequestsNextAction(e, SingleElevRequests)
-				elevio.SetMotorDirection(NextAction.Dirn)
-				e.Behaviour = NextAction.Behaviour
-				e.Dirn = elevio.MotorDirToString(NextAction.Dirn)
-				if e.Behaviour == elevator.EB_DoorOpen {
+				if doorIsOpen && obstructionActive {
+					elevio.SetDoorOpenLamp(true)
+					e.Behaviour = elevator.EB_DoorOpen
+				} else {
+					elevio.SetDoorOpenLamp(false)
+				}
+				if e.Behaviour != elevator.EB_DoorOpen {
+					NextAction := requests.RequestsNextAction(e, SingleElevRequests)
+					fmt.Println(NextAction)
+					if !obstructionActive {
+						elevio.SetMotorDirection(NextAction.Dirn)
+					}
+					e.Behaviour = NextAction.Behaviour //problem, overwrites to idle
+					e.Dirn = elevio.MotorDirToString(NextAction.Dirn)
+				} else {
 					elevio.SetDoorOpenLamp(true)
 					ClearHallReqs := requests.ShouldClearHallRequest(e, HallRequests)
 					SingleElevRequests[e.Floor][0] = ClearHallReqs[0]
@@ -200,6 +218,7 @@ func main() {
 					doorTimer.Reset(3 * time.Second)
 				}
 				for len(Peerlist.Peers) == 0 {
+
 					select {
 					case a := <-drv_buttons:
 						elevio.SetButtonLamp(a.Button, a.Floor, true)

@@ -24,9 +24,12 @@ func MasterFindNextAction(
 		}
 		//Iterate Myslaves
 		//Save input = ElevStates[myslaveID]
+
+		//////////////////////////////////////////
 		for _, ID := range MasterStruct.MySlaves.Active {
 			HRAInput.States[ID] = MasterStruct.ElevStates[ID]
 		}
+		//////////////////////////////////////////////
 		jsonBytes, _ := json.Marshal(HRAInput)
 		ret, _ := exec.Command("../hall_request_assigner/"+HRAExecutable, "-i", string(jsonBytes)).Output()
 		json.Unmarshal(ret, &HRAOutput)
