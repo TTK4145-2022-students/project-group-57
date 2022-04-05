@@ -132,7 +132,7 @@ func main() {
 		//
 		for i := 0; i < 5; i++ {
 			MasterMergeSend <- MasterStruct //Init false
-			time.Sleep(300 * time.Millisecond)
+			time.Sleep(15 * time.Millisecond)
 		}
 		fmt.Println("Time to kill")
 		os.Exit(99)
